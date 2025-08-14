@@ -1,0 +1,8 @@
+port: 8080
+log_level: info
+github:
+  owner: your-github-username
+  repo: your-repo-name
+  path: your-inventory-path.yaml
+  ref: heads/main
+  interval_seconds: 10

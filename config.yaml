@@ -1,5 +1,8 @@
 port: 8080
 log_level: info
-inventory_path: data/inventory.yaml
-
-
+github:
+  owner: yurifrl
+  repo: Obsidian
+  path: .data/inventory.yaml
+  ref: heads/main
+  interval_seconds: 10

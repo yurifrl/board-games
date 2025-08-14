@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 	"sort"
@@ -10,6 +11,7 @@ import (
 
 	"board-games/pkg/config"
 	"board-games/pkg/store"
+	"board-games/pkg/syncer"
 )
 
 type Server struct {
@@ -21,10 +23,12 @@ type Server struct {
 }
 
 func New(cfg *config.Config, logger *log.Logger) *Server {
-    st, _ := store.New(cfg.InventoryPath)
+    st, err := store.New(cfg.InventoryPath)
+    if err != nil { st = store.NewEmpty() }
     tmpl := template.Must(template.ParseGlob("templates/*.html"))
     s := &Server{cfg: cfg, log: logger, mux: http.NewServeMux(), tmpl: tmpl, store: st}
     s.routes()
+    s.startPoller()
     return s
 }
 
@@ -59,6 +63,20 @@ func parseDate(s string) time.Time {
         if t, err := time.Parse(l, s); err == nil { return t }
     }
     return time.Time{}
+}
+
+func (s *Server) startPoller() {
+    token := s.cfg.GitHub.Token
+    if token == "" { return }
+    p := &syncer.GitHubPoller{
+        Token: token,
+        Owner: s.cfg.GitHub.Owner,
+        Repo:  s.cfg.GitHub.Repo,
+        Path:  s.cfg.GitHub.Path,
+        Ref:   s.cfg.GitHub.Ref,
+        Interval: time.Duration(s.cfg.GitHub.IntervalSeconds) * time.Second,
+    }
+    go p.Start(context.Background(), func(b []byte) { _ = s.store.ReplaceFromYAML(b) })
 }
 
 

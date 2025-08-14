@@ -14,11 +14,8 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=build /out/server /app/server
 COPY --from=build /out/cli /app/cli
-COPY data/inventory.yaml /app/data/inventory.yaml
-COPY config.yaml /app/config.yaml
-ENV INVENTORY_PATH=/app/data/inventory.yaml
+COPY templates /app/templates
+ENV GHA_PAT=""
 EXPOSE 8080
 USER nonroot
 ENTRYPOINT ["/app/server", "--config", "/app/config.yaml"]
-
-

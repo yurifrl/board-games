@@ -10,7 +10,17 @@ import (
 type Config struct {
     Port          string `mapstructure:"port"`
     LogLevel      string `mapstructure:"log_level"`
-    InventoryPath string `mapstructure:"inventory_path"`
+    InventoryPath string `mapstructure:"-"`
+    GitHub        GitHub `mapstructure:"github"`
+}
+
+type GitHub struct {
+    Token            string `mapstructure:"-"`
+    Owner            string `mapstructure:"owner"`
+    Repo             string `mapstructure:"repo"`
+    Path             string `mapstructure:"path"`
+    Ref              string `mapstructure:"ref"`
+    IntervalSeconds  int    `mapstructure:"interval_seconds"`
 }
 
 func Load(cfgFile string) (*viper.Viper, error) {
@@ -45,12 +55,10 @@ func Build(cfgFile string, fs *pflag.FlagSet) (*Config, error) {
     if c.LogLevel == "" {
         c.LogLevel = "info"
     }
-    if c.InventoryPath == "" {
-        c.InventoryPath = os.Getenv("INVENTORY_PATH")
-        if c.InventoryPath == "" {
-            c.InventoryPath = "data/inventory.yaml"
-        }
-    }
+    // InventoryPath has no defaults; set only via flags
+    if c.GitHub.Token == "" { c.GitHub.Token = os.Getenv("GHA_PAT") }
+    if c.GitHub.Ref == "" { c.GitHub.Ref = "heads/main" }
+    if c.GitHub.IntervalSeconds == 0 { c.GitHub.IntervalSeconds = 10 }
     return &c, nil
 }
 

@@ -12,6 +12,7 @@ import (
 )
 
 var cfgFile string
+var invPath string
 
 var rootCmd = &cobra.Command{
     Use:   "boardgames",
@@ -22,6 +23,9 @@ var rootCmd = &cobra.Command{
         cfg, err := config.Build(cfgFile, cmd.Flags())
         if err != nil {
             return err
+        }
+        if invPath != "" {
+            cfg.InventoryPath = invPath
         }
         st, err := store.New(cfg.InventoryPath)
         if err != nil {
@@ -36,6 +40,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
     rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Config file (default is config.yaml)")
+    rootCmd.Flags().StringVarP(&invPath, "inventory_path", "f", "", "Path to inventory YAML file")
 }
 
 func main() {
