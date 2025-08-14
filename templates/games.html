@@ -1,0 +1,8 @@
+{{ range . }}
+  <article class="card">
+    <h3 class="title">{{ .Name }}</h3>
+    <p class="meta">#{{ .ID }} · {{ .PurchaseDate }} · {{ .PurchaseWhere }}</p>
+    <p>BGG: {{ .BGGID }} ({{ .BGGSyncStatus }})</p>
+    <p>Ludopedia: {{ .LudopediaID }} ({{ .LudopediaSyncStatus }})</p>
+  </article>
+{{ end }}

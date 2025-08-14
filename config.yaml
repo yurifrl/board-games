@@ -1,0 +1,5 @@
+port: 8080
+log_level: info
+inventory_path: data/inventory.yaml
+
+

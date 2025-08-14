@@ -1,0 +1,5 @@
+---
+description: Rules for Zig WebAssembly development
+globs: ["*.zig"]
+alwaysApply: false
+---

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Board Games</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { background: #1e1e1e; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .title { font-weight: 600; margin: 0 0 8px 0; }
+    .meta { color: #aaa; font-size: 0.9em; }
+  </style>
+  </head>
+<body>
+  <h1>Board Games</h1>
+  <div id="list" class="grid" hx-get="/games" hx-trigger="load"></div>
+</body>
+</html>
+
+

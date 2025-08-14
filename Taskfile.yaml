@@ -1,0 +1,12 @@
+version: '3'
+
+env:
+  REGISTRY: '{{.REGISTRY | default "docker-registry.syscd.tech"}}'
+
+tasks:
+  run:
+    cmds:
+      - go run ./cmd/server -c config.yaml
+  cli:
+    cmds:
+      - go run ./cmd/cli -c config.yaml
