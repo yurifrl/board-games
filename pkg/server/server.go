@@ -1,15 +1,12 @@
 package server
 
 import (
-	"crypto/sha1"
 	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
-	"encoding/xml"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
-	urlpkg "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,7 +16,9 @@ import (
 
 	"github.com/charmbracelet/log"
 
+	"board-games/pkg/bgg"
 	"board-games/pkg/config"
+	"board-games/pkg/ludopedia"
 	"board-games/pkg/store"
 )
 
@@ -50,10 +49,12 @@ func New(cfg *config.Config, logger *log.Logger) *Server {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleHome)
 	s.mux.HandleFunc("/games", s.handleGames)
-	s.mux.HandleFunc("/image", s.handleImage)
-	s.mux.HandleFunc("/proxy", s.handleProxyImage)
+	s.mux.HandleFunc("/games/", s.handleGameShow)
+	// ID-based image endpoint
+	s.mux.HandleFunc("/image/", s.handleImageByID)
 	// admin
 	s.mux.HandleFunc("/api/load", s.handleLoad)
+	// deprecated: remove upstream pass-through endpoints
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +62,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "index.html", nil); err != nil {
 		s.log.Error("template execute failed", "template", "index.html", "err", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
@@ -76,11 +78,28 @@ func (s *Server) handleGames(w http.ResponseWriter, r *http.Request) {
 		if di.Equal(dj) { return games[i].Name < games[j].Name }
 		return di.After(dj)
 	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "games.html", games); err != nil {
 		s.log.Error("template execute failed", "template", "games.html", "err", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return
 	}
+}
+
+// GET /games/{id}
+func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
+    // Expect path like /games/{id}
+    parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/games/"), "/")
+    if len(parts) == 0 || parts[0] == "" { http.NotFound(w, r); return }
+    id := parts[0]
+    g, ok := s.store.GetByID(id)
+    if !ok { http.NotFound(w, r); return }
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    if err := s.tmpl.ExecuteTemplate(w, "game.html", g); err != nil {
+        s.log.Error("template execute failed", "template", "game.html", "err", err)
+        http.Error(w, "template error", http.StatusInternalServerError)
+        return
+    }
 }
 
 func parseDate(s string) time.Time {
@@ -105,8 +124,31 @@ func (s *Server) startJanitor() {
 				}
 				return nil
 			})
+			// refresh upstream caches that expired
+			s.refreshExpiredCaches()
 		}
 	}()
+}
+
+func (s *Server) refreshExpiredCaches() {
+    now := time.Now().Format(time.RFC3339)
+    games := s.store.List()
+    for _, g := range games {
+        if s.store.IsBGGCacheExpired(g.ID, now) {
+            if id := extractBGGIDFromURL(g.URLBGG); id != "" {
+                if raw, err := bgg.FetchThingRaw(id, true); err == nil {
+                    _ = s.store.PutBGGCache(g.ID, id, string(raw), now)
+                }
+            }
+        }
+        if s.store.IsLudopediaCacheExpired(g.ID, now) {
+            if slug := extractLudopediaSlugFromURL(g.URLLudopedia); slug != "" {
+                if b, err := ludopedia.FetchGameRaw(slug); err == nil {
+                    _ = s.store.PutLudopediaCache(g.ID, slug, string(b), now)
+                }
+            }
+        }
+    }
 }
 
 // --- admin load ---
@@ -134,8 +176,29 @@ func (s *Server) handleLoad(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	go s.backfillCaches()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "loaded"})
+}
+
+func (s *Server) backfillCaches() {
+    games := s.store.List()
+    for _, g := range games {
+        if id := extractBGGIDFromURL(g.URLBGG); id != "" {
+            if _, ok := s.store.GetBGGCache(g.ID); !ok {
+                if raw, err := bgg.FetchThingRaw(id, true); err == nil {
+                    _ = s.store.PutBGGCache(g.ID, id, string(raw), time.Now().Format(time.RFC3339))
+                }
+            }
+        }
+        if slug := extractLudopediaSlugFromURL(g.URLLudopedia); slug != "" {
+            if _, ok := s.store.GetLudopediaCache(g.ID); !ok {
+                if b, err := ludopedia.FetchGameRaw(slug); err == nil {
+                    _ = s.store.PutLudopediaCache(g.ID, slug, string(b), time.Now().Format(time.RFC3339))
+                }
+            }
+        }
+    }
 }
 
 func (s *Server) authorized(r *http.Request) bool {
@@ -150,108 +213,89 @@ func (s *Server) authorized(r *http.Request) bool {
 
 // Image handler and helpers
 
-func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
+// GET /image/{id}?source=auto|bgg|ludo&format=thumb|image
+func (s *Server) handleImageByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/image/")
+	if id == "" { http.NotFound(w, r); return }
 	q := r.URL.Query()
-	bggURL := q.Get("bgg_url")
-	ludoURL := q.Get("ludo_url")
-	if id := extractBGGIDFromURL(bggURL); id != "" {
-		if u := fetchBGGImageURL(id); u != "" {
-			http.Redirect(w, r, "/proxy?url="+urlpkg.QueryEscape(u), http.StatusFound)
-			return
+	source := strings.ToLower(q.Get("source"))
+	if source == "" { source = "auto" }
+	format := strings.ToLower(q.Get("format"))
+	if format == "" { format = "thumb" }
+
+	// Try to serve prebuilt file(s) without DB lookups
+	serveIfExists := func(name string) bool {
+		path := filepath.Join(s.cacheDir, name)
+		if f, err := os.Open(path); err == nil {
+			defer f.Close()
+			sniff := make([]byte, 512)
+			n, _ := f.Read(sniff)
+			if n > 0 { w.Header().Set("Content-Type", http.DetectContentType(sniff[:n])); _, _ = f.Seek(0, io.SeekStart) }
+			http.ServeContent(w, r, name, time.Time{}, f)
+			return true
 		}
+		return false
 	}
-	if slug := extractLudopediaSlugFromURL(ludoURL); slug != "" {
-		if u := fetchLudopediaImageURL(slug); u != "" {
-			http.Redirect(w, r, "/proxy?url="+urlpkg.QueryEscape(u), http.StatusFound)
-			return
-		}
+
+	candidate := func(src string) string { return id + "_" + src + "_" + format }
+	if source == "bgg" && serveIfExists(candidate("bgg")) { return }
+	if source == "ludo" && serveIfExists(candidate("ludo")) { return }
+	if source == "auto" {
+		if serveIfExists(candidate("bgg")) { return }
+		if serveIfExists(candidate("ludo")) { return }
 	}
+
+	// Not found locally: kick off background build and return placeholder fast
+	go s.buildImageForID(id, source, format)
 	http.Redirect(w, r, "https://placehold.co/400x550?text=No+Image", http.StatusFound)
 }
 
-// handleProxyImage downloads remote images and caches them on disk.
-// Query params: url=REMOTE_URL
-func (s *Server) handleProxyImage(w http.ResponseWriter, r *http.Request) {
-	url := r.URL.Query().Get("url")
-	if url == "" {
-		http.Error(w, "missing url", http.StatusBadRequest)
-		return
-	}
+func (s *Server) buildImageForID(id, source, format string) {
+	g, ok := s.store.GetByID(id)
+	if !ok { return }
+	bggID := extractBGGIDFromURL(g.URLBGG)
+	ludoSlug := extractLudopediaSlugFromURL(g.URLLudopedia)
 
-	// Hash file name for cache key
-	h := sha1.Sum([]byte(url))
-	name := hex.EncodeToString(h[:])
+	resolve := func(src string) string {
+		if src == "bgg" && bggID != "" { return fetchBGGImageURLVariant(bggID, format == "image") }
+		if src == "ludo" && ludoSlug != "" { return fetchLudopediaImageURL(ludoSlug) }
+		return ""
+	}
+	chosen := ""
+	if source == "bgg" || source == "auto" {
+		if u := resolve("bgg"); u != "" { chosen = "bgg|" + u }
+	}
+	if chosen == "" && (source == "ludo" || source == "auto") {
+		if u := resolve("ludo"); u != "" { chosen = "ludo|" + u }
+	}
+	if chosen == "" { return }
+	parts := strings.SplitN(chosen, "|", 2)
+	src, url := parts[0], parts[1]
+	name := id + "_" + src + "_" + format
 	path := filepath.Join(s.cacheDir, name)
-
-	// Serve from cache if exists
-	if f, err := os.Open(path); err == nil {
-		defer f.Close()
-		// Detect content type from file bytes
-		sniff := make([]byte, 512)
-		n, _ := f.Read(sniff)
-		if n > 0 {
-			w.Header().Set("Content-Type", http.DetectContentType(sniff[:n]))
-			_, _ = f.Seek(0, io.SeekStart)
-		}
-		http.ServeContent(w, r, name, time.Time{}, f)
-		return
-	}
-
-	// Fetch and store
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", "board-games/1.0")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode >= 400 {
-		http.Redirect(w, r, "https://placehold.co/400x550?text=No+Image", http.StatusFound)
-		return
-	}
-	defer resp.Body.Close()
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil { http.Error(w, "cache error", http.StatusInternalServerError); return }
-	if ct := resp.Header.Get("Content-Type"); ct != "" { w.Header().Set("Content-Type", ct) }
-	if _, err := io.Copy(f, resp.Body); err != nil { f.Close(); os.Remove(tmp); http.Error(w, "cache write", http.StatusInternalServerError); return }
-	f.Close()
-	_ = os.Rename(tmp, path)
-
-	// Re-open stable file to serve
-	rf, err := os.Open(path)
-	if err != nil { http.Redirect(w, r, "https://placehold.co/400x550?text=No+Image", http.StatusFound); return }
-	defer rf.Close()
-	if w.Header().Get("Content-Type") == "" {
-		sniff := make([]byte, 512)
-		n, _ := rf.Read(sniff)
-		if n > 0 { w.Header().Set("Content-Type", http.DetectContentType(sniff[:n])); _, _ = rf.Seek(0, io.SeekStart) }
-	}
-	http.ServeContent(w, r, name, time.Time{}, rf)
-}
-
-type bggItemsResp struct {
-	XMLName xml.Name  `xml:"items"`
-	Item    []bggItem `xml:"item"`
-}
-
-type bggItem struct {
-	Image     string `xml:"image"`
-	Thumbnail string `xml:"thumbnail"`
+	_ = downloadToFile(url, path)
 }
 
 func fetchBGGImageURL(id string) string {
-	url := "https://www.boardgamegeek.com/xmlapi2/thing?id=" + id
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", "board-games/1.0")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil { return "" }
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil { return "" }
-	var data bggItemsResp
-	if err := xml.Unmarshal(b, &data); err != nil { return "" }
-	if len(data.Item) == 0 { return "" }
-	if data.Item[0].Image != "" { return data.Item[0].Image }
-	if data.Item[0].Thumbnail != "" { return data.Item[0].Thumbnail }
+	items, err := bgg.FetchThing(id, false)
+	if err != nil || items == nil || len(items.Item) == 0 { return "" }
+	t := items.Item[0]
+	if t.Thumbnail != "" { return t.Thumbnail }
+	if t.Image != "" { return t.Image }
+	return ""
+}
+
+func fetchBGGImageURLVariant(id string, wantFull bool) string {
+	items, err := bgg.FetchThing(id, false)
+	if err != nil || items == nil || len(items.Item) == 0 { return "" }
+	t := items.Item[0]
+	if wantFull {
+		if t.Image != "" { return t.Image }
+		if t.Thumbnail != "" { return t.Thumbnail }
+		return ""
+	}
+	if t.Thumbnail != "" { return t.Thumbnail }
+	if t.Image != "" { return t.Image }
 	return ""
 }
 
@@ -269,6 +313,22 @@ func fetchLudopediaImageURL(id string) string {
 	m := re.FindSubmatch(b)
 	if len(m) == 2 { return string(m[1]) }
 	return ""
+}
+
+func downloadToFile(url, finalPath string) error {
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("User-Agent", "board-games/1.0")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode >= 400 { if resp != nil { resp.Body.Close() }; return fmt.Errorf("fetch error") }
+	defer resp.Body.Close()
+	tmp := finalPath + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil { return err }
+	if ct := resp.Header.Get("Content-Type"); ct != "" { _ = os.WriteFile(finalPath+".ct", []byte(ct), 0o644) }
+	if _, err := io.Copy(f, resp.Body); err != nil { f.Close(); os.Remove(tmp); return err }
+	f.Close()
+	return os.Rename(tmp, finalPath)
 }
 
 func extractBGGIDFromURL(u string) string {

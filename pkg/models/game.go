@@ -2,7 +2,7 @@ package models
 
 type Game struct {
 	ID            string `yaml:"id,omitempty" json:"id"`
-	Name          string `yaml:"game_name" json:"name"`
+	Name          string `yaml:"name" json:"name"`
 	PurchasePrice string `yaml:"price" json:"purchase_price"`
 	PurchaseDate  string `yaml:"purchase_date" json:"purchase_date"`
 	PurchaseWhere string `yaml:"purchace_from" json:"purchase_where"`

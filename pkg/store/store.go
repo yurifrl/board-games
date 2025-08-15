@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 
@@ -52,6 +53,20 @@ func initSchema(db *sql.DB) error {
 			url_bgg TEXT,
 			url_ludopedia TEXT
 		);
+		CREATE TABLE IF NOT EXISTS bgg_cache (
+			game_id TEXT PRIMARY KEY,
+			bgg_id TEXT,
+			payload TEXT NOT NULL,
+			fetched_at TEXT,
+			expires_at TEXT
+		);
+		CREATE TABLE IF NOT EXISTS ludopedia_cache (
+			game_id TEXT PRIMARY KEY,
+			ludo_slug TEXT,
+			payload TEXT NOT NULL,
+			fetched_at TEXT,
+			expires_at TEXT
+		);
 		CREATE TABLE IF NOT EXISTS cache_files (
 			key TEXT PRIMARY KEY,
 			path TEXT NOT NULL,
@@ -82,41 +97,26 @@ func (s *Store) List() []models.Game {
 	return out
 }
 
+func (s *Store) GetByID(id string) (models.Game, bool) {
+    row := s.db.QueryRow(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia FROM games WHERE id = ?`, id)
+    var g models.Game
+    if err := row.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia); err != nil {
+        return models.Game{}, false
+    }
+    return g, true
+}
+
 // ReplaceFromYAML loads games from the YAML formats used previously and replaces
 // the database contents. This allows feeding the DB from GitHub or files.
 func (s *Store) ReplaceFromYAML(b []byte) error {
 	var inv models.Inventory
-	if err := yaml.Unmarshal(b, &inv); err == nil && len(inv.Games) > 0 {
-		return s.replaceAll(inv.Games)
-	}
-	var raw struct{ Games map[string]map[string]any `yaml:"games"` }
-	if err := yaml.Unmarshal(b, &raw); err != nil {
+	if err := yaml.Unmarshal(b, &inv); err != nil {
 		return err
 	}
-	games := make([]models.Game, 0, len(raw.Games))
-	for id, v := range raw.Games {
-		g := models.Game{
-			ID:            id,
-			Name:          asString(v["game_name"]),
-			PurchasePrice: asString(v["price"]),
-			PurchaseDate:  asString(v["purchase_date"]),
-			PurchaseWhere: func() string {
-				if s := asString(v["purchace_from"]); s != "" { return s }
-				return asString(v["store"])
-			}(),
-			Language: func() string {
-				if s := asString(v["language"]); s != "" { return s }
-				pf := asString(v["purchace_from"])
-				if pf == "" { pf = asString(v["store"]) }
-				if pf == "Amazon.com" { return "en" }
-				return "pt-br"
-			}(),
-			URLBGG:        asString(v["url_bgg"]),
-			URLLudopedia:  asString(v["url_ludopedia"]),
-		}
-		games = append(games, g)
+	if len(inv.Games) == 0 {
+		return fmt.Errorf("no games found")
 	}
-	return s.replaceAll(games)
+	return s.replaceAll(inv.Games)
 }
 
 func (s *Store) replaceAll(games []models.Game) error {
@@ -130,7 +130,11 @@ func (s *Store) replaceAll(games []models.Game) error {
 	for _, g := range games {
 		id := g.ID
 		if id == "" {
-			h := sha1.Sum([]byte(fmt.Sprintf("%s|%s", g.Name, g.PurchaseDate)))
+			base := fmt.Sprintf("%s|%s|%s", strings.TrimSpace(g.Name), strings.TrimSpace(g.URLBGG), strings.TrimSpace(g.URLLudopedia))
+			if strings.TrimSpace(g.URLBGG) == "" && strings.TrimSpace(g.URLLudopedia) == "" {
+				base = fmt.Sprintf("%s|%s", base, strings.TrimSpace(g.PurchaseDate))
+			}
+			h := sha1.Sum([]byte(base))
 			id = hex.EncodeToString(h[:8])
 		}
 		if _, err := stmt.Exec(id, g.Name, g.PurchasePrice, g.PurchaseDate, g.PurchaseWhere, g.Language, g.URLBGG, g.URLLudopedia); err != nil {
@@ -140,19 +144,42 @@ func (s *Store) replaceAll(games []models.Game) error {
 	return tx.Commit()
 }
 
-func asString(v any) string {
-	switch t := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return t
-	case []any:
-		if len(t) == 0 { return "" }
-		if s, ok := t[0].(string); ok { return s }
-		return ""
-	default:
-		return ""
-	}
+func (s *Store) GetBGGCache(gameID string) (payload string, ok bool) {
+	row := s.db.QueryRow(`SELECT payload FROM bgg_cache WHERE game_id = ?`, gameID)
+	var p string
+	if err := row.Scan(&p); err != nil { return "", false }
+	return p, true
 }
 
+func (s *Store) PutBGGCache(gameID, bggID, payload, fetchedAt string) error {
+	_, err := s.db.Exec(`INSERT INTO bgg_cache(game_id, bgg_id, payload, fetched_at, expires_at) VALUES(?,?,?,?,datetime('now','+10 days'))
+		ON CONFLICT(game_id) DO UPDATE SET bgg_id=excluded.bgg_id, payload=excluded.payload, fetched_at=excluded.fetched_at, expires_at=excluded.expires_at`, gameID, bggID, payload, fetchedAt)
+	return err
+}
 
+func (s *Store) GetLudopediaCache(gameID string) (payload string, ok bool) {
+	row := s.db.QueryRow(`SELECT payload FROM ludopedia_cache WHERE game_id = ?`, gameID)
+	var p string
+	if err := row.Scan(&p); err != nil { return "", false }
+	return p, true
+}
+
+func (s *Store) PutLudopediaCache(gameID, slug, payload, fetchedAt string) error {
+	_, err := s.db.Exec(`INSERT INTO ludopedia_cache(game_id, ludo_slug, payload, fetched_at, expires_at) VALUES(?,?,?,?,datetime('now','+10 days'))
+		ON CONFLICT(game_id) DO UPDATE SET ludo_slug=excluded.ludo_slug, payload=excluded.payload, fetched_at=excluded.fetched_at, expires_at=excluded.expires_at`, gameID, slug, payload, fetchedAt)
+	return err
+}
+
+func (s *Store) IsBGGCacheExpired(gameID string, now string) bool {
+	row := s.db.QueryRow(`SELECT expires_at FROM bgg_cache WHERE game_id = ?`, gameID)
+	var ea string
+	if err := row.Scan(&ea); err != nil { return true }
+	return ea != "" && ea <= now
+}
+
+func (s *Store) IsLudopediaCacheExpired(gameID string, now string) bool {
+	row := s.db.QueryRow(`SELECT expires_at FROM ludopedia_cache WHERE game_id = ?`, gameID)
+	var ea string
+	if err := row.Scan(&ea); err != nil { return true }
+	return ea != "" && ea <= now
+}

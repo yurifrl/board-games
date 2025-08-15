@@ -1,0 +1,17 @@
+<article class="game-detail">
+  <img src="/image?bgg_url={{ .URLBGG }}&ludo_url={{ .URLLudopedia }}" alt="{{ .Name }}" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+  <h2>{{ .Name }}</h2>
+  <p><strong>Purchased:</strong> {{ .PurchaseDate }} · {{ .PurchasePrice }} · {{ .PurchaseWhere }}</p>
+  <p><strong>Language:</strong> {{ .Language }}</p>
+  <p>
+    {{ if .URLBGG }}<a href="{{ .URLBGG }}" target="_blank" rel="noopener">BGG</a>{{ end }}
+    {{ if and .URLBGG .URLLudopedia }} · {{ end }}
+    {{ if .URLLudopedia }}<a href="{{ .URLLudopedia }}" target="_blank" rel="noopener">Ludopedia</a>{{ end }}
+  </p>
+  <p><a href="/games">← Back to list</a></p>
+</article>
+
+
+
+
+
