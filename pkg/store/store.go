@@ -48,6 +48,7 @@ func initSchema(db *sql.DB) error {
 			purchase_price TEXT,
 			purchase_date TEXT,
 			purchase_where TEXT,
+			language TEXT,
 			url_bgg TEXT,
 			url_ludopedia TEXT
 		);
@@ -66,7 +67,7 @@ func initSchema(db *sql.DB) error {
 }
 
 func (s *Store) List() []models.Game {
-	rows, err := s.db.Query(`SELECT id, name, purchase_price, purchase_date, purchase_where, url_bgg, url_ludopedia FROM games`)
+	rows, err := s.db.Query(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia FROM games`)
 	if err != nil {
 		return nil
 	}
@@ -74,7 +75,7 @@ func (s *Store) List() []models.Game {
 	out := make([]models.Game, 0, 64)
 	for rows.Next() {
 		var g models.Game
-		if err := rows.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.URLBGG, &g.URLLudopedia); err == nil {
+		if err := rows.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia); err == nil {
 			out = append(out, g)
 		}
 	}
@@ -103,6 +104,13 @@ func (s *Store) ReplaceFromYAML(b []byte) error {
 				if s := asString(v["purchace_from"]); s != "" { return s }
 				return asString(v["store"])
 			}(),
+			Language: func() string {
+				if s := asString(v["language"]); s != "" { return s }
+				pf := asString(v["purchace_from"])
+				if pf == "" { pf = asString(v["store"]) }
+				if pf == "Amazon.com" { return "en" }
+				return "pt-br"
+			}(),
 			URLBGG:        asString(v["url_bgg"]),
 			URLLudopedia:  asString(v["url_ludopedia"]),
 		}
@@ -116,7 +124,7 @@ func (s *Store) replaceAll(games []models.Game) error {
 	if err != nil { return err }
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.Exec(`DELETE FROM games`); err != nil { return err }
-	stmt, err := tx.Prepare(`INSERT INTO games(id, name, purchase_price, purchase_date, purchase_where, url_bgg, url_ludopedia) VALUES(?,?,?,?,?,?,?)`)
+	stmt, err := tx.Prepare(`INSERT INTO games(id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia) VALUES(?,?,?,?,?,?,?,?)`)
 	if err != nil { return err }
 	defer stmt.Close()
 	for _, g := range games {
@@ -125,7 +133,7 @@ func (s *Store) replaceAll(games []models.Game) error {
 			h := sha1.Sum([]byte(fmt.Sprintf("%s|%s", g.Name, g.PurchaseDate)))
 			id = hex.EncodeToString(h[:8])
 		}
-		if _, err := stmt.Exec(id, g.Name, g.PurchasePrice, g.PurchaseDate, g.PurchaseWhere, g.URLBGG, g.URLLudopedia); err != nil {
+		if _, err := stmt.Exec(id, g.Name, g.PurchasePrice, g.PurchaseDate, g.PurchaseWhere, g.Language, g.URLBGG, g.URLLudopedia); err != nil {
 			return err
 		}
 	}
