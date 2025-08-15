@@ -1,5 +1,5 @@
 <article class="game-detail">
-  <img src="/image?bgg_url={{ .URLBGG }}&ludo_url={{ .URLLudopedia }}" alt="{{ .Name }}" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+  <img src="/image/{{ .ID }}?source=auto&format=image" alt="{{ .Name }}" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
   <h2>{{ .Name }}</h2>
   <p><strong>Purchased:</strong> {{ .PurchaseDate }} · {{ .PurchasePrice }} · {{ .PurchaseWhere }}</p>
   <p><strong>Language:</strong> {{ .Language }}</p>

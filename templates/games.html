@@ -1,7 +1,7 @@
 {{ range . }}
   <article class="card">
     <a href="/games/{{ .ID }}">
-      <img src="/image?bgg_url={{ .URLBGG }}&ludo_url={{ .URLLudopedia }}" alt="{{ .Name }}" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+      <img src="/image/{{ .ID }}?source=auto&format=thumb" alt="{{ .Name }}" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
     </a>
     <h3 class="title"><a href="/games/{{ .ID }}">{{ .Name }}</a></h3>
     <p>

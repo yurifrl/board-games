@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -22,6 +24,7 @@ func Load(cfgFile string) (*viper.Viper, error) {
         v.SetConfigType("yaml")
         v.AddConfigPath(".")
     }
+    v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
     v.AutomaticEnv()
     _ = v.ReadInConfig()
     return v, nil
@@ -45,9 +48,15 @@ func Build(cfgFile string, fs *pflag.FlagSet) (*Config, error) {
     if c.LogLevel == "" {
         c.LogLevel = "info"
     }
-    if c.DBPath == "" { c.DBPath = ".storage/boardgames.db" }
-    if c.CacheDir == "" { c.CacheDir = ".storage/cache" }
-    if c.CacheTTL == "" { c.CacheTTL = "168h" }
+    if c.DBPath == "" {
+        c.DBPath = ".storage/boardgames.db"
+    }
+    if c.CacheDir == "" {
+        c.CacheDir = ".storage/cache"
+    }
+    if c.CacheTTL == "" {
+        c.CacheTTL = "168h"
+    }
     return &c, nil
 }
 

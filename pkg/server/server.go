@@ -90,10 +90,16 @@ func (s *Server) handleGames(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
     // Expect path like /games/{id}
     parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/games/"), "/")
-    if len(parts) == 0 || parts[0] == "" { http.NotFound(w, r); return }
+    if len(parts) == 0 || parts[0] == "" {
+        http.NotFound(w, r)
+        return
+    }
     id := parts[0]
     g, ok := s.store.GetByID(id)
-    if !ok { http.NotFound(w, r); return }
+    if !ok {
+        http.NotFound(w, r)
+        return
+    }
     w.Header().Set("Content-Type", "text/html; charset=utf-8")
     if err := s.tmpl.ExecuteTemplate(w, "game.html", g); err != nil {
         s.log.Error("template execute failed", "template", "game.html", "err", err)
@@ -154,25 +160,46 @@ func (s *Server) refreshExpiredCaches() {
 // --- admin load ---
 
 func (s *Server) handleLoad(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { http.Error(w, "method not allowed", http.StatusMethodNotAllowed); return }
-	if !s.authorized(r) { http.Error(w, "unauthorized", http.StatusUnauthorized); return }
+	if r.Method != http.MethodPost {
+		s.log.Warn("method not allowed", "method", r.Method)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.authorized(r) {
+		s.log.Warn("unauthorized")
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
 
 	var data []byte
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "multipart/form-data") {
 		file, _, err := r.FormFile("file")
-		if err != nil { http.Error(w, "file required", http.StatusBadRequest); return }
+		if err != nil {
+			s.log.Warn("file required", "err", err)
+			http.Error(w, "file required", http.StatusBadRequest)
+			return
+		}
 		defer file.Close()
 		b, err := io.ReadAll(file)
-		if err != nil { http.Error(w, "read error", http.StatusInternalServerError); return }
+		if err != nil {
+			s.log.Error("read error", "err", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		data = b
 	} else {
 		b, err := io.ReadAll(r.Body)
-		if err != nil { http.Error(w, "read error", http.StatusInternalServerError); return }
+		if err != nil {
+			s.log.Error("read error", "err", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 		data = b
 	}
 
 	if err := s.store.ReplaceFromYAML(data); err != nil {
+		s.log.Warn("replace from yaml failed", "err", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -216,12 +243,19 @@ func (s *Server) authorized(r *http.Request) bool {
 // GET /image/{id}?source=auto|bgg|ludo&format=thumb|image
 func (s *Server) handleImageByID(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/image/")
-	if id == "" { http.NotFound(w, r); return }
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
 	q := r.URL.Query()
 	source := strings.ToLower(q.Get("source"))
-	if source == "" { source = "auto" }
+	if source == "" {
+		source = "auto"
+	}
 	format := strings.ToLower(q.Get("format"))
-	if format == "" { format = "thumb" }
+	if format == "" {
+		format = "thumb"
+	}
 
 	// Try to serve prebuilt file(s) without DB lookups
 	serveIfExists := func(name string) bool {
@@ -230,7 +264,10 @@ func (s *Server) handleImageByID(w http.ResponseWriter, r *http.Request) {
 			defer f.Close()
 			sniff := make([]byte, 512)
 			n, _ := f.Read(sniff)
-			if n > 0 { w.Header().Set("Content-Type", http.DetectContentType(sniff[:n])); _, _ = f.Seek(0, io.SeekStart) }
+			if n > 0 {
+				w.Header().Set("Content-Type", http.DetectContentType(sniff[:n]))
+				_, _ = f.Seek(0, io.SeekStart)
+			}
 			http.ServeContent(w, r, name, time.Time{}, f)
 			return true
 		}
@@ -238,11 +275,19 @@ func (s *Server) handleImageByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidate := func(src string) string { return id + "_" + src + "_" + format }
-	if source == "bgg" && serveIfExists(candidate("bgg")) { return }
-	if source == "ludo" && serveIfExists(candidate("ludo")) { return }
+	if source == "bgg" && serveIfExists(candidate("bgg")) {
+		return
+	}
+	if source == "ludo" && serveIfExists(candidate("ludo")) {
+		return
+	}
 	if source == "auto" {
-		if serveIfExists(candidate("bgg")) { return }
-		if serveIfExists(candidate("ludo")) { return }
+		if serveIfExists(candidate("bgg")) {
+			return
+		}
+		if serveIfExists(candidate("ludo")) {
+			return
+		}
 	}
 
 	// Not found locally: kick off background build and return placeholder fast
@@ -252,23 +297,35 @@ func (s *Server) handleImageByID(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) buildImageForID(id, source, format string) {
 	g, ok := s.store.GetByID(id)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	bggID := extractBGGIDFromURL(g.URLBGG)
 	ludoSlug := extractLudopediaSlugFromURL(g.URLLudopedia)
 
 	resolve := func(src string) string {
-		if src == "bgg" && bggID != "" { return fetchBGGImageURLVariant(bggID, format == "image") }
-		if src == "ludo" && ludoSlug != "" { return fetchLudopediaImageURL(ludoSlug) }
+		if src == "bgg" && bggID != "" {
+			return fetchBGGImageURLVariant(bggID, format == "image")
+		}
+		if src == "ludo" && ludoSlug != "" {
+			return fetchLudopediaImageURL(ludoSlug)
+		}
 		return ""
 	}
 	chosen := ""
 	if source == "bgg" || source == "auto" {
-		if u := resolve("bgg"); u != "" { chosen = "bgg|" + u }
+		if u := resolve("bgg"); u != "" {
+			chosen = "bgg|" + u
+		}
 	}
 	if chosen == "" && (source == "ludo" || source == "auto") {
-		if u := resolve("ludo"); u != "" { chosen = "ludo|" + u }
+		if u := resolve("ludo"); u != "" {
+			chosen = "ludo|" + u
+		}
 	}
-	if chosen == "" { return }
+	if chosen == "" {
+		return
+	}
 	parts := strings.SplitN(chosen, "|", 2)
 	src, url := parts[0], parts[1]
 	name := id + "_" + src + "_" + format

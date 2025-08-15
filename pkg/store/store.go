@@ -98,12 +98,12 @@ func (s *Store) List() []models.Game {
 }
 
 func (s *Store) GetByID(id string) (models.Game, bool) {
-    row := s.db.QueryRow(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia FROM games WHERE id = ?`, id)
-    var g models.Game
-    if err := row.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia); err != nil {
-        return models.Game{}, false
-    }
-    return g, true
+	row := s.db.QueryRow(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia FROM games WHERE id = ?`, id)
+	var g models.Game
+	if err := row.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia); err != nil {
+		return models.Game{}, false
+	}
+	return g, true
 }
 
 // ReplaceFromYAML loads games from the YAML formats used previously and replaces
@@ -121,11 +121,17 @@ func (s *Store) ReplaceFromYAML(b []byte) error {
 
 func (s *Store) replaceAll(games []models.Game) error {
 	tx, err := s.db.Begin()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`DELETE FROM games`); err != nil { return err }
+	if _, err := tx.Exec(`DELETE FROM games`); err != nil {
+		return err
+	}
 	stmt, err := tx.Prepare(`INSERT INTO games(id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia) VALUES(?,?,?,?,?,?,?,?)`)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer stmt.Close()
 	for _, g := range games {
 		id := g.ID
@@ -147,7 +153,9 @@ func (s *Store) replaceAll(games []models.Game) error {
 func (s *Store) GetBGGCache(gameID string) (payload string, ok bool) {
 	row := s.db.QueryRow(`SELECT payload FROM bgg_cache WHERE game_id = ?`, gameID)
 	var p string
-	if err := row.Scan(&p); err != nil { return "", false }
+	if err := row.Scan(&p); err != nil {
+		return "", false
+	}
 	return p, true
 }
 
@@ -160,7 +168,9 @@ func (s *Store) PutBGGCache(gameID, bggID, payload, fetchedAt string) error {
 func (s *Store) GetLudopediaCache(gameID string) (payload string, ok bool) {
 	row := s.db.QueryRow(`SELECT payload FROM ludopedia_cache WHERE game_id = ?`, gameID)
 	var p string
-	if err := row.Scan(&p); err != nil { return "", false }
+	if err := row.Scan(&p); err != nil {
+		return "", false
+	}
 	return p, true
 }
 
@@ -173,13 +183,17 @@ func (s *Store) PutLudopediaCache(gameID, slug, payload, fetchedAt string) error
 func (s *Store) IsBGGCacheExpired(gameID string, now string) bool {
 	row := s.db.QueryRow(`SELECT expires_at FROM bgg_cache WHERE game_id = ?`, gameID)
 	var ea string
-	if err := row.Scan(&ea); err != nil { return true }
+	if err := row.Scan(&ea); err != nil {
+		return true
+	}
 	return ea != "" && ea <= now
 }
 
 func (s *Store) IsLudopediaCacheExpired(gameID string, now string) bool {
 	row := s.db.QueryRow(`SELECT expires_at FROM ludopedia_cache WHERE game_id = ?`, gameID)
 	var ea string
-	if err := row.Scan(&ea); err != nil { return true }
+	if err := row.Scan(&ea); err != nil {
+		return true
+	}
 	return ea != "" && ea <= now
 }

@@ -27,7 +27,9 @@ var rootCmd = &cobra.Command{
         if os.Getenv("BOARDGAMES_TOKEN") == "" {
             return fmt.Errorf("BOARDGAMES_TOKEN not set")
         }
-        if dbPath != "" { cfg.DBPath = dbPath }
+        if dbPath != "" {
+            cfg.DBPath = dbPath
+        }
         logger.Info("DB mode", "db", cfg.DBPath)
         srv := server.New(cfg, logger)
         addr := fmt.Sprintf("0.0.0.0:%s", cfg.Port)

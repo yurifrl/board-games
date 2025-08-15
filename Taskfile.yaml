@@ -4,6 +4,9 @@ env:
   REGISTRY: '{{.REGISTRY | default "docker-registry.syscd.tech"}}'
 
 tasks:
+  op-inject:
+    cmds:
+      - op inject --account=my.1password.com -f -i .env.op -o .env
   run:
     cmds:
       - go run ./cmd/server -c config.yaml
