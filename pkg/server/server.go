@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"html/template"
 	"io"
@@ -18,7 +19,9 @@ import (
 
 	"board-games/pkg/bgg"
 	"board-games/pkg/config"
+	"board-games/pkg/httpx"
 	"board-games/pkg/ludopedia"
+	"board-games/pkg/models"
 	"board-games/pkg/store"
 )
 
@@ -29,6 +32,14 @@ type Server struct {
 	tmpl  *template.Template
 	store *store.Store
 	cacheDir string
+}
+
+// GameDetailData is the payload for the game detail page, enriching the base
+// game with BGG and Ludopedia details when available.
+type GameDetailData struct {
+    models.Game
+    BGG  *bgg.Thing
+    Ludo *ludopedia.Jogo
 }
 
 func New(cfg *config.Config, logger *log.Logger) *Server {
@@ -72,11 +83,29 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGames(w http.ResponseWriter, r *http.Request) {
 	games := s.store.List()
+	// default: hide items tagged as "book" unless scope=all
+	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
+	if scope != "all" {
+		filtered := games[:0]
+		for _, g := range games {
+			hasBook := false
+			for _, t := range g.Tags {
+				if strings.EqualFold(strings.TrimSpace(t), "book") { hasBook = true; break }
+			}
+			if !hasBook { filtered = append(filtered, g) }
+		}
+		games = filtered
+	}
 	sort.Slice(games, func(i, j int) bool {
-		di := parseDate(games[i].PurchaseDate)
-		dj := parseDate(games[j].PurchaseDate)
-		if di.Equal(dj) { return games[i].Name < games[j].Name }
-		return di.After(dj)
+		ti := parseDate(games[i].PurchaseDate)
+		tj := parseDate(games[j].PurchaseDate)
+		if ti.IsZero() && !tj.IsZero() { return false }
+		if !ti.IsZero() && tj.IsZero() { return true }
+		if !ti.IsZero() && !tj.IsZero() {
+			if !ti.Equal(tj) { return ti.After(tj) }
+		}
+		if games[i].Name == games[j].Name { return games[i].ID < games[j].ID }
+		return games[i].Name < games[j].Name
 	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tmpl.ExecuteTemplate(w, "games.html", games); err != nil {
@@ -100,8 +129,46 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
         http.NotFound(w, r)
         return
     }
+    // Try to enrich with BGG and Ludopedia cached payloads (or fetch on miss)
+    var bggThing *bgg.Thing
+    if bggID := extractBGGIDFromURL(g.URLBGG); bggID != "" {
+        // Prefer cache
+        if payload, ok := s.store.GetBGGCache(g.ID); ok {
+            var items bgg.ThingItems
+            if err := xml.Unmarshal([]byte(payload), &items); err == nil && len(items.Item) > 0 {
+                t := items.Item[0]
+                bggThing = &t
+            }
+        } else if raw, err := bgg.FetchThingRaw(bggID, true); err == nil {
+            var items bgg.ThingItems
+            if err := xml.Unmarshal(raw, &items); err == nil && len(items.Item) > 0 {
+                t := items.Item[0]
+                bggThing = &t
+                _ = s.store.PutBGGCache(g.ID, bggID, string(raw), time.Now().Format(time.RFC3339))
+            }
+        }
+    }
+
+    var ludo *ludopedia.Jogo
+    if slug := extractLudopediaSlugFromURL(g.URLLudopedia); slug != "" {
+        if payload, ok := s.store.GetLudopediaCache(g.ID); ok {
+            var j ludopedia.Jogo
+            if err := json.Unmarshal([]byte(payload), &j); err == nil {
+                ludo = &j
+            }
+        } else if raw, err := ludopedia.FetchGameRaw(slug); err == nil {
+            var j ludopedia.Jogo
+            if err := json.Unmarshal(raw, &j); err == nil {
+                ludo = &j
+                _ = s.store.PutLudopediaCache(g.ID, slug, string(raw), time.Now().Format(time.RFC3339))
+            }
+        }
+    }
+
+    data := GameDetailData{Game: g, BGG: bggThing, Ludo: ludo}
+
     w.Header().Set("Content-Type", "text/html; charset=utf-8")
-    if err := s.tmpl.ExecuteTemplate(w, "game.html", g); err != nil {
+    if err := s.tmpl.ExecuteTemplate(w, "game.html", data); err != nil {
         s.log.Error("template execute failed", "template", "game.html", "err", err)
         http.Error(w, "template error", http.StatusInternalServerError)
         return
@@ -358,9 +425,8 @@ func fetchBGGImageURLVariant(id string, wantFull bool) string {
 
 func fetchLudopediaImageURL(id string) string {
 	url := "https://ludopedia.com.br/jogo/" + id
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", "board-games/1.0")
-	client := &http.Client{Timeout: 5 * time.Second}
+	req, _ := httpx.NewRequest("GET", url)
+	client := httpx.NewClient(5 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil { return "" }
 	defer resp.Body.Close()
@@ -373,9 +439,8 @@ func fetchLudopediaImageURL(id string) string {
 }
 
 func downloadToFile(url, finalPath string) error {
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", "board-games/1.0")
-	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := httpx.NewRequest("GET", url)
+	client := httpx.NewClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode >= 400 { if resp != nil { resp.Body.Close() }; return fmt.Errorf("fetch error") }
 	defer resp.Body.Close()

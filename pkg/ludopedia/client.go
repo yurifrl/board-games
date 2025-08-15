@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"time"
+
+	"board-games/pkg/httpx"
 )
 
-var httpClient = &http.Client{Timeout: 10 * time.Second}
+var httpClient = httpx.NewClient(10 * time.Second)
 
 // FetchGameRaw returns the raw JSON payload for a Ludopedia game by slug or id.
 func FetchGameRaw(slug string) ([]byte, error) {
@@ -29,8 +30,7 @@ func FetchGameRaw(slug string) ([]byte, error) {
     q.Set("app_key", appKey)
     q.Set("access_token", token)
     u.RawQuery = q.Encode()
-    req, _ := http.NewRequest(http.MethodGet, u.String(), nil)
-    req.Header.Set("User-Agent", "board-games/1.0")
+    req, _ := httpx.NewRequest("GET", u.String())
     resp, err := httpClient.Do(req)
     if err != nil {
         return nil, fmt.Errorf("request: %w", err)

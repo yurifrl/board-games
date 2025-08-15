@@ -51,7 +51,8 @@ func initSchema(db *sql.DB) error {
 			purchase_where TEXT,
 			language TEXT,
 			url_bgg TEXT,
-			url_ludopedia TEXT
+			url_ludopedia TEXT,
+			tags TEXT
 		);
 		CREATE TABLE IF NOT EXISTS bgg_cache (
 			game_id TEXT PRIMARY KEY,
@@ -78,11 +79,13 @@ func initSchema(db *sql.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_cache_files_expires ON cache_files(expires_at);
 	`)
-	return err
+	if err != nil { return err }
+	_, _ = db.Exec(`ALTER TABLE games ADD COLUMN tags TEXT`)
+	return nil
 }
 
 func (s *Store) List() []models.Game {
-	rows, err := s.db.Query(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia FROM games`)
+	rows, err := s.db.Query(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia, tags FROM games`)
 	if err != nil {
 		return nil
 	}
@@ -90,18 +93,29 @@ func (s *Store) List() []models.Game {
 	out := make([]models.Game, 0, 64)
 	for rows.Next() {
 		var g models.Game
-		if err := rows.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia); err == nil {
+		var tags string
+		if err := rows.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia, &tags); err == nil {
+			if strings.TrimSpace(tags) != "" {
+				g.Tags = strings.Split(tags, ",")
+				for i := range g.Tags { g.Tags[i] = strings.TrimSpace(g.Tags[i]) }
+			}
 			out = append(out, g)
 		}
 	}
 	return out
 }
 
+
 func (s *Store) GetByID(id string) (models.Game, bool) {
-	row := s.db.QueryRow(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia FROM games WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia, tags FROM games WHERE id = ?`, id)
 	var g models.Game
-	if err := row.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia); err != nil {
+	var tags string
+	if err := row.Scan(&g.ID, &g.Name, &g.PurchasePrice, &g.PurchaseDate, &g.PurchaseWhere, &g.Language, &g.URLBGG, &g.URLLudopedia, &tags); err != nil {
 		return models.Game{}, false
+	}
+	if strings.TrimSpace(tags) != "" {
+		g.Tags = strings.Split(tags, ",")
+		for i := range g.Tags { g.Tags[i] = strings.TrimSpace(g.Tags[i]) }
 	}
 	return g, true
 }
@@ -128,7 +142,7 @@ func (s *Store) replaceAll(games []models.Game) error {
 	if _, err := tx.Exec(`DELETE FROM games`); err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO games(id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia) VALUES(?,?,?,?,?,?,?,?)`)
+	stmt, err := tx.Prepare(`INSERT INTO games(id, name, purchase_price, purchase_date, purchase_where, language, url_bgg, url_ludopedia, tags) VALUES(?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
@@ -143,7 +157,8 @@ func (s *Store) replaceAll(games []models.Game) error {
 			h := sha1.Sum([]byte(base))
 			id = hex.EncodeToString(h[:8])
 		}
-		if _, err := stmt.Exec(id, g.Name, g.PurchasePrice, g.PurchaseDate, g.PurchaseWhere, g.Language, g.URLBGG, g.URLLudopedia); err != nil {
+		tags := strings.Join(g.Tags, ",")
+		if _, err := stmt.Exec(id, g.Name, g.PurchasePrice, g.PurchaseDate, g.PurchaseWhere, g.Language, g.URLBGG, g.URLLudopedia, tags); err != nil {
 			return err
 		}
 	}

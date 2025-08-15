@@ -28,7 +28,7 @@ var rootCmd = &cobra.Command{
             return err
         }
         for _, g := range st.List() {
-            fmt.Printf("%s | %s | %s\n", g.ID, g.Name, g.PurchaseWhere)
+            fmt.Printf("%s | %s\n", g.ID, g.Name)
         }
         return nil
     },

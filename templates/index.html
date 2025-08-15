@@ -16,7 +16,36 @@
   </head>
 <body>
   <h1>Board Games</h1>
+  <div style="margin: 12px 0;">
+    <label for="scope" class="meta">Show</label>
+    <select id="scope" name="scope" hx-get="/games" hx-target="#list" hx-trigger="change">
+      <option value="">Games only</option>
+      <option value="all">All (incl. books)</option>
+    </select>
+  </div>
   <div id="list" class="grid" hx-get="/games" hx-trigger="load"></div>
+  <dialog id="modal" onclick="if (event.target === this) this.close();">
+    <article id="modal_content"></article>
+  </dialog>
+  <script>
+    (function(){
+      var isMobile = window.matchMedia('(max-width: 640px)').matches;
+      if (isMobile) {
+        var list = document.getElementById('list');
+        if (list) { list.setAttribute('hx-disable', ''); }
+        document.addEventListener('click', function(e){
+          var a = e.target.closest('a[data-mobile-nav="true"]');
+          if (a) {
+            // let normal navigation occur for full page on mobile
+            a.removeAttribute('hx-get');
+            a.removeAttribute('hx-target');
+            a.removeAttribute('hx-swap');
+            a.removeAttribute('hx-on');
+          }
+        }, { once: true, passive: true });
+      }
+    })();
+  </script>
 </body>
 </html>
 
