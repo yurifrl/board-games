@@ -32,7 +32,7 @@ games:
     purchase_date: "??/??/22"
     purchace_from: "Mogi Shopping (Maybe)"
     language: "pt-br"
-    url_bgg: "https://boardgamegeek.com/boardgame/189527/imploding-kittens"
+    url_bgg: "https://boardgamegeek.com/boardgame/204053/exploding-kittens-imploding-kittens"
     url_ludopedia: "https://ludopedia.com.br/jogo/exploding-kittens-imploding-kittens"
   - name: "Saboteur"
     price: "R$ 99,00"
@@ -104,7 +104,7 @@ games:
     language: "pt-br"
     url_bgg: ""
     url_ludopedia: ""
-    tags: [ "tcg" ]
+    tags: [ "tcg", "skip" ]
   - name: "Jungle Speed"
     price: "R$ 21,96"
     purchase_date: "08/11/24"
@@ -290,7 +290,7 @@ games:
     language: "pt-br"
     url_bgg: "" # NOTFOUND
     url_ludopedia: "https://ludopedia.com.br/jogo/historias-sinistras-cadaveres-desventuras-e-adversidades"
-    tags: [ "board_game" ]
+    tags: [ "board_game", "skip"]
   - name: "Histórias Sinistras: Medicina"
     price: "R$ 46,41"
     purchase_date: "08/05/25"
@@ -298,7 +298,7 @@ games:
     language: "pt-br"
     url_bgg: "" # NOTFOUND
     url_ludopedia: "https://ludopedia.com.br/jogo/black-stories-medicine-edition"
-    tags: [ "board_game" ]
+    tags: [ "board_game", "skip" ]
   - name: "Ito"
     price: "R$ 92,91"
     purchase_date: "08/05/25"
@@ -494,7 +494,7 @@ games:
     purchase_date: "24/05/25"
     purchace_from: "Caldeirão"
     language: "pt-br"
-    url_bgg: "https://boardgamegeek.com/boardgame/386940/art-society"
+    url_bgg: "https://boardgamegeek.com/boardgame/395375/art-society"
     url_ludopedia: "https://ludopedia.com.br/jogo/art-society"
   - name: "Decrypto"
     price: "R$ 180,00"
@@ -822,7 +822,7 @@ games:
     purchase_date: "04/07/25"
     purchace_from: "Amazon"
     language: "pt-br"
-    url_bgg: "https://boardgamegeek.com/boardgame/245987/side-effects"
+    url_bgg: "https://boardgamegeek.com/boardgame/230765/side-effects"
     url_ludopedia: "https://ludopedia.com.br/jogo/side-effects"
     tags: [ "board_game" ]
   - name: "Side Effects Booster Shot"
@@ -848,7 +848,7 @@ games:
     language: "pt-br"
     url_bgg: ""
     url_ludopedia: ""
-    tags: [ "board_game" ]
+    tags: [ "board_game", "skip" ]
   - name: "Libertalia"
     price: "R$300,00"
     purchase_date: "28/05/2025"

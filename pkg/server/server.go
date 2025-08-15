@@ -63,6 +63,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/games/", s.handleGameShow)
 	// ID-based image endpoint
 	s.mux.HandleFunc("/image/", s.handleImageByID)
+	s.mux.HandleFunc("/favicon.ico", s.handleFaviconICO)
+	s.mux.HandleFunc("/favicon.svg", s.handleFaviconSVG)
 	// admin
 	s.mux.HandleFunc("/api/load", s.handleLoad)
 	// deprecated: remove upstream pass-through endpoints
@@ -70,6 +72,16 @@ func (s *Server) routes() {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+// favicon
+func (s *Server) handleFaviconICO(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/favicon.svg", http.StatusMovedPermanently)
+}
+
+func (s *Server) handleFaviconSVG(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	io.WriteString(w, "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎲</text></svg>")
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
@@ -83,19 +95,21 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGames(w http.ResponseWriter, r *http.Request) {
 	games := s.store.List()
-	// default: hide items tagged as "book" unless scope=all
 	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
-	if scope != "all" {
-		filtered := games[:0]
-		for _, g := range games {
-			hasBook := false
-			for _, t := range g.Tags {
-				if strings.EqualFold(strings.TrimSpace(t), "book") { hasBook = true; break }
-			}
-			if !hasBook { filtered = append(filtered, g) }
+	filtered := games[:0]
+	for _, g := range games {
+		hasSkip := false
+		hasBook := false
+		for _, t := range g.Tags {
+			v := strings.TrimSpace(t)
+			if strings.EqualFold(v, "skip") { hasSkip = true }
+			if strings.EqualFold(v, "book") { hasBook = true }
 		}
-		games = filtered
+		if hasSkip { continue }
+		if scope != "all" && hasBook { continue }
+		filtered = append(filtered, g)
 	}
+	games = filtered
 	sort.Slice(games, func(i, j int) bool {
 		ti := parseDate(games[i].PurchaseDate)
 		tj := parseDate(games[j].PurchaseDate)

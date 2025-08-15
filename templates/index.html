@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Board Games</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%8E%B2%3C/text%3E%3C/svg%3E">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <style>
@@ -16,9 +17,9 @@
   </head>
 <body>
   <h1>Board Games</h1>
-  <div style="margin: 12px 0;">
-    <label for="scope" class="meta">Show</label>
-    <select id="scope" name="scope" hx-get="/games" hx-target="#list" hx-trigger="change">
+  <div style="margin:6px 0 8px;">
+    <label for="scope" class="meta" style="font-size:12px;color:#777;margin-right:6px;opacity:.7;">Filter</label>
+    <select id="scope" name="scope" hx-get="/games" hx-target="#list" hx-trigger="change" style="display:inline-block;width:auto;height:26px;padding:0 6px;font-size:12px;line-height:1;border-radius:6px;opacity:.7;">
       <option value="">Games only</option>
       <option value="all">All (incl. books)</option>
     </select>
