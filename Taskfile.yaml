@@ -1,0 +1,15 @@
+version: '3'
+
+env:
+  REGISTRY: '{{.REGISTRY | default "docker-registry.syscd.tech"}}'
+
+tasks:
+  run:
+    cmds:
+      - go run ./cmd/server -c config.yaml
+  cli:
+    cmds:
+      - go run ./cmd/cli -c config.yaml
+  load:
+    cmds:
+      - 'curl -sS -X POST -H "Authorization: Bearer ${BOARDGAMES_TOKEN}" --data-binary @data/inventory.yaml http://localhost:8080/api/load'
