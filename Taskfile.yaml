@@ -16,3 +16,6 @@ tasks:
   load:
     cmds:
       - 'curl -sS -X POST -H "Authorization: Bearer ${BOARDGAMES_TOKEN}" --data-binary @data/inventory.yaml http://localhost:8080/api/load'
+  load-prd:
+    cmds:
+      - 'curl -sS -X POST -H "Authorization: Bearer ${BOARDGAMES_TOKEN}" --data-binary @data/inventory.yaml https://bg.monaddaydream.com/api/load'

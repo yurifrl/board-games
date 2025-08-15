@@ -371,7 +371,26 @@ func (s *Server) handleImageByID(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Not found locally: kick off background build and return placeholder fast
+	// Not found locally: try to resolve upstream and redirect there immediately
+	// while caching in the background so subsequent requests are served locally.
+	if g, ok := s.store.GetByID(id); ok {
+		bggID := extractBGGIDFromURL(g.URLBGG)
+		ludoSlug := extractLudopediaSlugFromURL(g.URLLudopedia)
+		upstream := ""
+		if (source == "bgg" || source == "auto") && bggID != "" {
+			upstream = fetchBGGImageURLVariant(bggID, format == "image")
+		}
+		if upstream == "" && (source == "ludo" || source == "auto") && ludoSlug != "" {
+			upstream = fetchLudopediaImageURL(ludoSlug)
+		}
+		if upstream != "" {
+			go s.buildImageForID(id, source, format)
+			http.Redirect(w, r, upstream, http.StatusFound)
+			return
+		}
+	}
+
+	// Still nothing: kick off background build and return placeholder fast
 	go s.buildImageForID(id, source, format)
 	http.Redirect(w, r, "https://placehold.co/400x550?text=No+Image", http.StatusFound)
 }
