@@ -99,7 +99,10 @@ func (s *Store) ReplaceFromYAML(b []byte) error {
 			Name:          asString(v["game_name"]),
 			PurchasePrice: asString(v["price"]),
 			PurchaseDate:  asString(v["purchase_date"]),
-			PurchaseWhere: asString(v["store"]),
+			PurchaseWhere: func() string {
+				if s := asString(v["purchace_from"]); s != "" { return s }
+				return asString(v["store"])
+			}(),
 			URLBGG:        asString(v["url_bgg"]),
 			URLLudopedia:  asString(v["url_ludopedia"]),
 		}
