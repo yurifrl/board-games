@@ -51,6 +51,16 @@ func initSchema(db *sql.DB) error {
 			url_bgg TEXT,
 			url_ludopedia TEXT
 		);
+		CREATE TABLE IF NOT EXISTS cache_files (
+			key TEXT PRIMARY KEY,
+			path TEXT NOT NULL,
+			mime TEXT,
+			size_bytes INTEGER,
+			etag TEXT,
+			fetched_at TEXT,
+			expires_at TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_cache_files_expires ON cache_files(expires_at);
 	`)
 	return err
 }

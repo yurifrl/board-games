@@ -43,6 +43,7 @@ func New(cfg *config.Config, logger *log.Logger) *Server {
 	_ = os.MkdirAll(cacheDir, 0o755)
 	s := &Server{cfg: cfg, log: logger, mux: http.NewServeMux(), tmpl: tmpl, store: st, cacheDir: cacheDir}
 	s.routes()
+	s.startJanitor()
 	return s
 }
 
@@ -89,6 +90,23 @@ func parseDate(s string) time.Time {
 		if t, err := time.Parse(l, s); err == nil { return t }
 	}
 	return time.Time{}
+}
+
+func (s *Server) startJanitor() {
+	dur, err := time.ParseDuration(s.cfg.CacheTTL)
+	if err != nil || dur <= 0 { return }
+	ticker := time.NewTicker(dur)
+	go func() {
+		for range ticker.C {
+			_ = filepath.Walk(s.cacheDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info == nil || info.IsDir() { return nil }
+				if time.Since(info.ModTime()) > dur {
+					_ = os.Remove(path)
+				}
+				return nil
+			})
+		}
+	}()
 }
 
 // --- admin load ---

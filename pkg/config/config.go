@@ -10,6 +10,7 @@ type Config struct {
     LogLevel      string `mapstructure:"log_level"`
     DBPath        string `mapstructure:"db_path"`
     CacheDir      string `mapstructure:"cache_path"`
+    CacheTTL      string `mapstructure:"cache_ttl"`
 }
 
 func Load(cfgFile string) (*viper.Viper, error) {
@@ -44,8 +45,9 @@ func Build(cfgFile string, fs *pflag.FlagSet) (*Config, error) {
     if c.LogLevel == "" {
         c.LogLevel = "info"
     }
-    if c.DBPath == "" { c.DBPath = "./data/boardgames.db" }
-    if c.CacheDir == "" { c.CacheDir = "./data/cache" }
+    if c.DBPath == "" { c.DBPath = ".storage/boardgames.db" }
+    if c.CacheDir == "" { c.CacheDir = ".storage/cache" }
+    if c.CacheTTL == "" { c.CacheTTL = "168h" }
     return &c, nil
 }
 
