@@ -1,0 +1,118 @@
+<article class="game-detail">
+  <img src="/image/{{ .ID }}?source=auto&format=image" alt="{{ .Name }}" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+  <h2>{{ .Name }}</h2>
+  
+  <p><strong>Language:</strong> {{ .Language }}</p>
+  <p>
+    {{ if .URLBGG }}<a href="{{ .URLBGG }}" target="_blank" rel="noopener">BGG</a>{{ end }}
+    {{ if and .URLBGG .URLLudopedia }} · {{ end }}
+    {{ if .URLLudopedia }}<a href="{{ .URLLudopedia }}" target="_blank" rel="noopener">Ludopedia</a>{{ end }}
+  </p>
+
+  {{ if .BGG }}
+  <section>
+    <h3>BGG</h3>
+    <p>
+      {{ if .BGG.YearPublished.Value }}<strong>Year:</strong> {{ .BGG.YearPublished.Value }} · {{ end }}
+      {{ if .BGG.MinPlayers.Value }}<strong>Players:</strong> {{ .BGG.MinPlayers.Value }}–{{ .BGG.MaxPlayers.Value }} · {{ end }}
+      {{ if .BGG.MinPlayTime.Value }}<strong>Time:</strong> {{ .BGG.MinPlayTime.Value }}–{{ .BGG.MaxPlayTime.Value }} min · {{ end }}
+      {{ if .BGG.MinAge.Value }}<strong>Age:</strong> {{ .BGG.MinAge.Value }}+{{ end }}
+    </p>
+    {{ if .BGG.Statistics }}
+    <p>
+      {{ if .BGG.Statistics.Ratings.Average.Value }}<strong>Rating:</strong> {{ printf "%.2f" .BGG.Statistics.Ratings.Average.Value }} ({{ .BGG.Statistics.Ratings.UsersRated.Value }} votes) · {{ end }}
+      {{ if .BGG.Statistics.Ratings.AverageWeight.Value }}<strong>Weight:</strong> {{ printf "%.2f" .BGG.Statistics.Ratings.AverageWeight.Value }}{{ end }}
+    </p>
+    {{ end }}
+    {{ $hasCats := false }}
+    {{ range .BGG.Link }}{{ if eq .Type "boardgamecategory" }}{{ $hasCats = true }}{{ end }}{{ end }}
+    {{ if $hasCats }}
+      <p><strong>Categories:</strong> {{ $first := true }}{{ range .BGG.Link }}{{ if eq .Type "boardgamecategory" }}{{ if $first }}{{ $first = false }}{{ else }}, {{ end }}{{ .Value }}{{ end }}{{ end }}</p>
+    {{ end }}
+    {{ $hasMechs := false }}
+    {{ range .BGG.Link }}{{ if eq .Type "boardgamemechanic" }}{{ $hasMechs = true }}{{ end }}{{ end }}
+    {{ if $hasMechs }}
+      <p><strong>Mechanics:</strong> {{ $first := true }}{{ range .BGG.Link }}{{ if eq .Type "boardgamemechanic" }}{{ if $first }}{{ $first = false }}{{ else }}, {{ end }}{{ .Value }}{{ end }}{{ end }}</p>
+    {{ end }}
+    {{ $hasDesigners := false }}
+    {{ range .BGG.Link }}{{ if eq .Type "boardgamedesigner" }}{{ $hasDesigners = true }}{{ end }}{{ end }}
+    {{ if $hasDesigners }}
+      <p><strong>Designers:</strong> {{ $first := true }}{{ range .BGG.Link }}{{ if eq .Type "boardgamedesigner" }}{{ if $first }}{{ $first = false }}{{ else }}, {{ end }}{{ .Value }}{{ end }}{{ end }}</p>
+    {{ end }}
+    {{ $hasArtists := false }}
+    {{ range .BGG.Link }}{{ if eq .Type "boardgameartist" }}{{ $hasArtists = true }}{{ end }}{{ end }}
+    {{ if $hasArtists }}
+      <p><strong>Artists:</strong> {{ $first := true }}{{ range .BGG.Link }}{{ if eq .Type "boardgameartist" }}{{ if $first }}{{ $first = false }}{{ else }}, {{ end }}{{ .Value }}{{ end }}{{ end }}</p>
+    {{ end }}
+    {{ if .BGG.Description }}
+    <details>
+      <summary>Description</summary>
+      <p>{{ .BGG.Description }}</p>
+    </details>
+    {{ end }}
+  </section>
+  {{ end }}
+
+  {{ if .Ludo }}
+  <section>
+    <h3>Ludopedia</h3>
+    <p>
+      {{ if .Ludo.AnoPublicacao }}<strong>Year:</strong> {{ .Ludo.AnoPublicacao }} · {{ end }}
+      {{ if .Ludo.MinJogadores }}<strong>Players:</strong> {{ .Ludo.MinJogadores }}–{{ .Ludo.MaxJogadores }} · {{ end }}
+      {{ if .Ludo.TempoJogoMin }}<strong>Time:</strong> {{ .Ludo.TempoJogoMin }} min · {{ end }}
+      {{ if .Ludo.IdadeMinima }}<strong>Age:</strong> {{ .Ludo.IdadeMinima }}+{{ end }}
+    </p>
+    {{ if .Ludo.Mecanicas }}
+    <p><strong>Mechanics:</strong>
+      {{ range $i, $m := .Ludo.Mecanicas }}{{ if $i }}, {{ end }}{{ $m.Nome }}{{ end }}
+    </p>
+    {{ end }}
+    {{ if .Ludo.Categorias }}
+    <p><strong>Categories:</strong>
+      {{ range $i, $c := .Ludo.Categorias }}{{ if $i }}, {{ end }}{{ $c.Nome }}{{ end }}
+    </p>
+    {{ end }}
+    {{ if .Ludo.Temas }}
+    <p><strong>Themes:</strong>
+      {{ range $i, $t := .Ludo.Temas }}{{ if $i }}, {{ end }}{{ $t.Nome }}{{ end }}
+    </p>
+    {{ end }}
+    {{ if .Ludo.Designers }}
+    <p><strong>Designers:</strong>
+      {{ range $i, $d := .Ludo.Designers }}{{ if $i }}, {{ end }}{{ $d.Nome }}{{ end }}
+    </p>
+    {{ end }}
+    {{ if .Ludo.Artistas }}
+    <p><strong>Artists:</strong>
+      {{ range $i, $a := .Ludo.Artistas }}{{ if $i }}, {{ end }}{{ $a.Nome }}{{ end }}
+    </p>
+    {{ end }}
+  </section>
+  {{ end }}
+
+  <section>
+    <h3>Gallery</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <a href="/image/{{ .ID }}?source=auto&format=image" target="_blank" rel="noopener">
+        <img src="/image/{{ .ID }}?source=auto&format=thumb" alt="{{ .Name }} (auto)" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+      </a>
+      <a href="/image/{{ .ID }}?source=bgg&format=image" target="_blank" rel="noopener">
+        <img src="/image/{{ .ID }}?source=bgg&format=thumb" alt="{{ .Name }} (BGG)" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+      </a>
+      <a href="/image/{{ .ID }}?source=ludo&format=image" target="_blank" rel="noopener">
+        <img src="/image/{{ .ID }}?source=ludo&format=thumb" alt="{{ .Name }} (Ludopedia)" loading="lazy" style="width:100%;height:auto;border-radius:6px;">
+      </a>
+    </div>
+  </section>
+
+  <p>
+    <a href="#" onclick="event.preventDefault(); document.getElementById('modal').close();">Close</a>
+    &nbsp;·&nbsp;
+    <a href="/games">← Back</a>
+  </p>
+ </article>
+
+
+
+
+

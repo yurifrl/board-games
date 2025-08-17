@@ -1,0 +1,27 @@
+version: '3'
+
+dotenv:
+  - .env
+
+tasks:
+  op-inject:
+    cmds:
+      - op inject --account=my.1password.com -f -i .env.op -o .env
+  run:
+    cmds:
+      - go run ./cmd/server -c config.yaml
+  cli:
+    cmds:
+      - go run ./cmd/cli -c config.yaml
+  load:
+    cmds:
+      - 'curl -sS -X POST -H "Authorization: Bearer ${BOARDGAMES_TOKEN}" --data-binary @data/test-inventory.yaml http://localhost:8080/api/load'
+  load-prd:
+    cmds:
+      - 'curl -vsS -X POST -H "Authorization: Bearer $BOARDGAMES_TOKEN" --data-binary @data/prd-inventory.yaml ${BOARDGAMES_URL}/api/load'
+  backup-file:
+    cmds:
+      - 'cp data/prd-inventory.yaml ~/Obsidian/Yuri/Resources/Board\ Games/inventory.yaml'
+  restore-file:
+    cmds:
+      - 'cp ~/Obsidian/Yuri/Resources/Board\ Games/inventory.yaml data/prd-inventory.yaml'

@@ -1,0 +1,4 @@
+port: 8080
+log_level: info
+db_path: .storage/boardgames.db
+cache_path: .storage/cache

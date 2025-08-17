@@ -1,0 +1,20 @@
+{{ range . }}
+  <article class="card">
+    <a href="/games/{{ .ID }}" hx-get="/games/{{ .ID }}" hx-target="#modal_content" hx-swap="innerHTML" hx-on="htmx:afterOnLoad: document.getElementById('modal').showModal()" data-mobile-nav="true">
+      <img
+        src="/image/{{ .ID }}?source=bgg&w=320"
+        srcset="/image/{{ .ID }}?source=bgg&w=240 240w, /image/{{ .ID }}?source=bgg&w=320 320w, /image/{{ .ID }}?source=bgg&w=480 480w"
+        sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 220px"
+        alt="{{ .Name }}"
+        loading="lazy"
+        style="width:100%;height:auto;border-radius:6px;"
+      >
+    </a>
+    <h3 class="title"><a href="/games/{{ .ID }}" hx-get="/games/{{ .ID }}" hx-target="#modal_content" hx-swap="innerHTML" hx-on="htmx:afterOnLoad: document.getElementById('modal').showModal()" data-mobile-nav="true">{{ .Name }}</a></h3>
+    <p>
+      {{ if .URLBGG }}<a href="{{ .URLBGG }}" target="_blank" rel="noopener">BGG</a>{{ end }}
+      {{ if and .URLBGG .URLLudopedia }} · {{ end }}
+      {{ if .URLLudopedia }}<a href="{{ .URLLudopedia }}" target="_blank" rel="noopener">Ludopedia</a>{{ end }}
+    </p>
+  </article>
+{{ end }}
