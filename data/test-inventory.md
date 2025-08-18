@@ -1,8 +1,5 @@
 
-
-name
 ---
-
 games:
   - name: "Jenga"
     price: "R$ 142,85"

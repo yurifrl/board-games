@@ -133,6 +133,13 @@ func (s *Store) ReplaceFromYAML(b []byte) error {
 	return s.replaceAll(inv.Games)
 }
 
+func (s *Store) ReplaceFromGames(games []models.Game) error {
+	if len(games) == 0 {
+		return fmt.Errorf("no games found")
+	}
+	return s.replaceAll(games)
+}
+
 func (s *Store) replaceAll(games []models.Game) error {
 	tx, err := s.db.Begin()
 	if err != nil {
