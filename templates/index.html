@@ -33,7 +33,6 @@
       var isMobile = window.matchMedia('(max-width: 640px)').matches;
       if (isMobile) {
         var list = document.getElementById('list');
-        if (list) { list.setAttribute('hx-disable', ''); }
         document.addEventListener('click', function(e){
           var a = e.target.closest('a[data-mobile-nav="true"]');
           if (a) {
