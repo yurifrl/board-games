@@ -1,25 +1,26 @@
-FROM --platform=$BUILDPLATFORM golang:latest AS build
-
-ARG TARGETOS
-ARG TARGETARCH
-
+# Public board-games image — code only. No inventory, no covers, no users baked.
+# Data at runtime: inventory via git-sync sidecar, covers via cover-sync cache
+# (PVC), users/secrets via mounted Secret. Build context = this directory.
+FROM oven/bun:1-alpine AS deps
 WORKDIR /app
+COPY package.json ./
+RUN bun install --production
 
-COPY go.mod ./
-RUN go mod download
-
-COPY . .
-
-# Build for the requested target platform (e.g., linux/arm64 for Raspberry Pi)
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /out/server ./cmd/server && \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o /out/cli ./cmd/cli
-
-FROM --platform=$TARGETPLATFORM gcr.io/distroless/static-debian12:nonroot
+FROM oven/bun:1-alpine AS runtime
 WORKDIR /app
-COPY --from=build /out/server /app/server
-COPY --from=build /out/cli /app/cli
-COPY templates /app/templates
-ENV GHA_PAT=""
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY src ./src
+# Non-secret default role config (overridable by a ConfigMap mount).
+COPY whitelist-config.yaml ./whitelist-config.yaml
+# Defaults point at the volumes the chart mounts.
+ENV PORT=8080 \
+    INVENTORY_DIR=/data/inventory \
+    COVERS_DIR=/cache/covers \
+    WHITELIST_CONFIG_PATH=/app/whitelist-config.yaml \
+    WHITELIST_USERS_PATH=/secrets/users \
+    TMP_USERS_PATH=/cache/tmp-users.jsonl
 EXPOSE 8080
-USER nonroot
-ENTRYPOINT ["/app/server", "--config", "/app/config.yaml"]
+HEALTHCHECK --interval=30s --timeout=3s CMD bun -e "fetch('http://localhost:'+(process.env.PORT||8080)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["bun", "run", "src/index.ts"]

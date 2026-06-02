@@ -1,5 +1,6 @@
+node_modules
 .env
-.storage/
-*.db
-config.yaml
-data/prd-inventory.yaml
+*.log
+*.jsonl
+whitelist-users.txt
+data
