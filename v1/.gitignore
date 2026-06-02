@@ -1,5 +1,0 @@
-.env
-.storage/
-*.db
-config.yaml
-data/prd-inventory.yaml

@@ -1,4 +1,0 @@
----
-alwaysApply: true
----
-- There only current version, theres no versioning, no retro compatibility, always move forward, don't refrain from breaking changes
