@@ -1,4 +1,5 @@
 import { ProviderUnavailableError, type CoverProvider, type CoverResult, type GameRef } from "../types.ts";
+import { coverKey } from "../keys.ts";
 
 const CAPAS = (id: string | number) => `https://storage.googleapis.com/ludopedia-capas/${id}.jpg`;
 const API = "https://ludopedia.com.br/api/v1";
@@ -31,6 +32,10 @@ export class LudopediaProvider implements CoverProvider {
     this.ua = cfg.userAgent ?? "Mozilla/5.0 Chrome/120";
   }
 
+  keyFor(game: GameRef): string | null {
+    return game.ludopediaId ? coverKey("ludopedia", game.ludopediaId) : null;
+  }
+
   async fetch(game: GameRef): Promise<CoverResult | null> {
     const id = game.ludopediaId ?? (await this.resolveId(game));
     if (!id) return null;
@@ -43,6 +48,7 @@ export class LudopediaProvider implements CoverProvider {
       source: this.name,
       tier: this.tier,
       sourceUrl: url,
+      cacheKey: coverKey("ludopedia", id),
     };
   }
 

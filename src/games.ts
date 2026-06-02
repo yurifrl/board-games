@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { coverKeyCandidates } from "./covers/keys.ts";
 
 const COVERS_DIR = process.env.COVERS_DIR ?? "./data";
 
@@ -20,6 +21,8 @@ export type Game = {
   ludopediaId?: string;
   image?: string;
   hasCover?: boolean;
+  /** Source-keyed cache dir to serve the cover from, e.g. `ludopedia-15950`. */
+  coverKey?: string;
   forSale: boolean;
   salePrice?: string;
   notes?: string;
@@ -113,7 +116,9 @@ export async function loadGames(dir: string, opts: { force?: boolean } = {}): Pr
       const { fm, body } = parseFrontmatter(raw);
       const g = mapGame(fm, body);
       if (g) {
-        g.hasCover = existsSync(join(COVERS_DIR, g.id, "cover.jpg"));
+        // Serve from the best available source-keyed cover (Ludopedia over BGG).
+        g.coverKey = coverKeyCandidates(g).find((k) => existsSync(join(COVERS_DIR, k, "cover.jpg")));
+        g.hasCover = !!g.coverKey;
         games.push(g);
       }
     } catch {

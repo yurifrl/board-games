@@ -5,24 +5,25 @@ import { join } from "node:path";
 import type { CoverMeta, CoverResult, CoverStore } from "./types.ts";
 
 /**
- * Filesystem cover cache. Layout (one dir per game id):
- *   <root>/<id>/cover.jpg     — the image bytes (what the web app serves)
- *   <root>/<id>/cover.json    — CoverMeta sidecar (source, tier, sha, ...)
+ * Filesystem cover cache. Layout (one dir per source-keyed cover):
+ *   <root>/<source>-<id>/cover.jpg   — the image bytes (what the web app serves)
+ *   <root>/<source>-<id>/cover.json  — CoverMeta sidecar (source, tier, sha, ...)
  *
- * This directory IS the cache: once populated and committed, the running app
- * reads only from here and never touches a remote.
+ * The key is `<source>-<id>` (e.g. `ludopedia-15950`, `bgg-237182`) — see
+ * keys.ts. This directory IS the cache: once populated and committed, the
+ * running app reads only from here and never touches a remote.
  */
 export class FsCoverStore implements CoverStore {
   constructor(private readonly root: string) {}
 
-  private dir(id: string) {
-    return join(this.root, id);
+  private dir(key: string) {
+    return join(this.root, key);
   }
-  private imagePath(id: string) {
-    return join(this.dir(id), "cover.jpg");
+  private imagePath(key: string) {
+    return join(this.dir(key), "cover.jpg");
   }
-  private metaPath(id: string) {
-    return join(this.dir(id), "cover.json");
+  private metaPath(key: string) {
+    return join(this.dir(key), "cover.json");
   }
 
   async has(id: string): Promise<boolean> {

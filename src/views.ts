@@ -114,7 +114,7 @@ function expansionRow(g: Game, perm: Permission, whatsapp: string): string {
 function groupCard(grp: GameGroup, perm: Permission, whatsapp: string): string {
   const g = grp.base;
   const img = g.hasCover
-    ? `<img src="/covers/${esc(g.id)}" alt="${esc(g.name)}" loading="lazy">`
+    ? `<img src="/covers/${esc(g.coverKey ?? "")}" alt="${esc(g.name)}" loading="lazy">`
     : g.image
     ? `<img src="${esc(g.image)}" alt="${esc(g.name)}" loading="lazy">`
     : `<div style="aspect-ratio:4/3;display:grid;place-items:center;color:#555">🎲</div>`;

@@ -4,6 +4,8 @@ import { BggImageProvider } from "./providers/bgg.ts";
 import { LudopediaProvider, type LudopediaConfig } from "./providers/ludopedia.ts";
 
 export type { GameRef, CoverProvider, CoverStore } from "./types.ts";
+export { coverKey, coverKeyCandidates } from "./keys.ts";
+export type { CoverSourceSlug } from "./keys.ts";
 export { CoverResolver } from "./resolver.ts";
 export type { SyncResult, Outcome } from "./resolver.ts";
 

@@ -163,7 +163,7 @@ app.get("/auth/logout", (c) => {
 
 app.get("/healthz", (c) => c.json({ ok: true }));
 
-// Serve baked-in board-game covers (data/<note id>/cover.jpg).
+// Serve cached covers from the source-keyed cache (data/<source>-<id>/cover.jpg).
 app.get("/covers/:id", async (c) => {
   const id = c.req.param("id").replace(/[^0-9A-Za-z_-]/g, "");
   const f = Bun.file(join(COVERS_DIR, id, "cover.jpg"));

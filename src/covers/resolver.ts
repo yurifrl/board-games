@@ -29,8 +29,16 @@ export class CoverResolver {
   }
 
   async resolveOne(game: GameRef): Promise<SyncResult> {
-    const meta = await this.store.meta(game.id);
-    const cachedTier = meta?.tier ?? -1;
+    // Best cover already cached for this game, across its source-keyed
+    // candidates (a game may have both a bgg- and a ludopedia- keyed cover).
+    let cached: { tier: number; source: string } | null = null;
+    for (const p of this.providers) {
+      const key = p.keyFor(game);
+      if (!key) continue;
+      const m = await this.store.meta(key);
+      if (m && (!cached || m.tier > cached.tier)) cached = { tier: m.tier, source: m.source };
+    }
+    const cachedTier = cached?.tier ?? -1;
     let deferred = false;
 
     for (const p of this.providers) {
@@ -38,11 +46,11 @@ export class CoverResolver {
       try {
         const res = await p.fetch(game);
         if (res) {
-          await this.store.write(game.id, res);
+          await this.store.write(res.cacheKey, res);
           return {
             id: game.id,
             name: game.name,
-            outcome: meta ? "upgraded" : "fetched",
+            outcome: cached ? "upgraded" : "fetched",
             source: res.source,
             tier: res.tier,
           };
@@ -56,8 +64,8 @@ export class CoverResolver {
       }
     }
 
-    if (meta) {
-      return { id: game.id, name: game.name, outcome: deferred ? "deferred" : "cached", source: meta.source, tier: meta.tier };
+    if (cached) {
+      return { id: game.id, name: game.name, outcome: deferred ? "deferred" : "cached", source: cached.source, tier: cached.tier };
     }
     return { id: game.id, name: game.name, outcome: deferred ? "deferred" : "missing" };
   }

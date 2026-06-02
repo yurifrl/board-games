@@ -28,6 +28,8 @@ export interface CoverResult {
   /** Quality tier — higher wins. Lets the resolver upgrade over time. */
   tier: number;
   sourceUrl: string;
+  /** Source-keyed cache key this cover is stored under, e.g. `ludopedia-15950`. */
+  cacheKey: string;
 }
 
 /** Sidecar metadata persisted next to each cached cover. */
@@ -51,6 +53,13 @@ export interface CoverProvider {
   readonly name: string;
   /** Higher = better quality; the resolver tries providers in descending tier. */
   readonly tier: number;
+  /**
+   * The cache key this provider would use for the game, derivable from the
+   * note alone (no network) — or null when this provider can't be keyed up
+   * front (e.g. the id must be resolved at fetch time). Used by the resolver to
+   * detect an already-cached cover without refetching.
+   */
+  keyFor(game: GameRef): string | null;
   fetch(game: GameRef): Promise<CoverResult | null>;
 }
 
