@@ -1,0 +1,8 @@
+# Users secret — ONE blob, one line per user:
+#   role:identifier=password      (identifier = email or name)
+#   identifier=password           (no prefix -> defaultRole from whitelist-config.yaml)
+# Passwords are plaintext (the real source is an encrypted Secret). Roles must
+# exist in whitelist-config.yaml; unknown role -> defaultRole.
+admin:you@example.com=admin-password
+buyer:friend@example.com=buyer-password
+viewer:guest@example.com=guest-password

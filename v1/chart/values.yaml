@@ -1,0 +1,56 @@
+# ── board-games chart values ───────────────────────────────────────────────────────────
+# The app image is PUBLIC (code only). Everything private comes at runtime.
+
+image:
+  repository: ghcr.io/OWNER/board-games
+  tag: latest
+  pullPolicy: Always
+
+# Public hostnames for the catalog site.
+hosts:
+  - bg.example.com
+baseUrl: https://bg.example.com
+whatsappNumber: ""            # optional; or set via secret WHATSAPP_NUMBER
+
+service:
+  port: 8080
+
+# ── git-sync sidecar: pulls the private inventory repo ─────────────────────────
+# USER PROVIDES: a GitHub PAT (read access to the repo) in the secret below.
+gitSync:
+  image: registry.k8s.io/git-sync/git-sync:v4.4.0
+  repo: https://github.com/OWNER/REPO.git
+  ref: main
+  period: 60s
+  # Inventory path inside the repo (relative to the synced checkout).
+  subPath: inventory
+
+# ── cover-sync sidecar: idempotent cache populate ─────────────────────────────
+coverSync:
+  enabled: true
+  intervalSeconds: 900
+
+# ── persistence: cover cache + temp-user store live here (idempotent) ─────────
+cache:
+  storageClass: longhorn
+  size: 1Gi
+
+# ── secrets/config the USER MUST PROVIDE ──────────────────────────────────────
+# Secret holding: users (role:id=pw blob), AUTH_SECRET, git PAT, (opt) WHATSAPP_NUMBER.
+# Provide via 1Password/ExternalSecret named `secretName`. Keys:
+#   users          -> directory of per-user keys OR a blob (app handles both)
+#   AUTH_SECRET     -> openssl rand -hex 32
+#   GITSYNC_PASSWORD-> GitHub PAT (read)
+secretName: board-games
+
+# Role config (non-secret). Rendered into a ConfigMap and mounted.
+whitelistConfig: |
+  defaultRole: viewer
+  roles:
+    admin:  { canSeePrices: true, canBid: true, admin: true }
+    buyer:  { canSeePrices: true, canBid: true }
+    viewer: { canSeePrices: false, canBid: false }
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits:   { cpu: 500m, memory: 256Mi }

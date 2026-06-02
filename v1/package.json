@@ -1,0 +1,18 @@
+{
+  "name": "board-games",
+  "version": "0.1.0",
+  "description": "Board game collection + private for-sale / bidding page. Stateless magic-link auth.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "covers": "bun run src/cli/sync-covers.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

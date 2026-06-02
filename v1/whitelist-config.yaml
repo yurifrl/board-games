@@ -1,0 +1,8 @@
+# Role capabilities + default role. Non-secret "default whitelist" — in k8s this
+# is delivered as a ConfigMap. Users (and their passwords) come from the Secret;
+# a user with no role prefix, or an unknown role, gets `defaultRole`.
+defaultRole: viewer
+roles:
+  admin:  { canSeePrices: true, canBid: true, admin: true }
+  buyer:  { canSeePrices: true, canBid: true }
+  viewer: { canSeePrices: false, canBid: false }

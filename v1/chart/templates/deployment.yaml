@@ -1,0 +1,136 @@
+{{- $inv := printf "/git/repo/%s" .Values.gitSync.subPath -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "board-games.fullname" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "board-games.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "board-games.fullname" . }}
+    spec:
+      # Populate the inventory before the app starts.
+      initContainers:
+        - name: git-sync-init
+          image: {{ .Values.gitSync.image }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ .Values.gitSync.repo | quote }}
+            - name: GITSYNC_REF
+              value: {{ .Values.gitSync.ref | quote }}
+            - name: GITSYNC_ROOT
+              value: /git
+            - name: GITSYNC_LINK
+              value: repo
+            - name: GITSYNC_ONE_TIME
+              value: "true"
+            - name: GITSYNC_USERNAME
+              value: git
+            - name: GITSYNC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: GITSYNC_PASSWORD
+          volumeMounts:
+            - name: git
+              mountPath: /git
+      containers:
+        # Keep the inventory fresh.
+        - name: git-sync
+          image: {{ .Values.gitSync.image }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ .Values.gitSync.repo | quote }}
+            - name: GITSYNC_REF
+              value: {{ .Values.gitSync.ref | quote }}
+            - name: GITSYNC_ROOT
+              value: /git
+            - name: GITSYNC_LINK
+              value: repo
+            - name: GITSYNC_PERIOD
+              value: {{ .Values.gitSync.period | quote }}
+            - name: GITSYNC_USERNAME
+              value: git
+            - name: GITSYNC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: GITSYNC_PASSWORD
+          volumeMounts:
+            - name: git
+              mountPath: /git
+        {{- if .Values.coverSync.enabled }}
+        # Idempotent cover-cache populate (writes to the PVC).
+        - name: cover-sync
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command:
+            - sh
+            - -c
+            - while true; do bun run src/cli/sync-covers.ts || true; sleep {{ .Values.coverSync.intervalSeconds }}; done
+          env:
+            - name: INVENTORY_DIR
+              value: {{ $inv | quote }}
+            - name: COVERS_DIR
+              value: /cache/covers
+          volumeMounts:
+            - name: git
+              mountPath: /git
+              readOnly: true
+            - name: cache
+              mountPath: /cache
+        {{- end }}
+        # The public catalog app.
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: BASE_URL
+              value: {{ .Values.baseUrl | quote }}
+            - name: WHATSAPP_NUMBER
+              value: {{ .Values.whatsappNumber | quote }}
+            - name: INVENTORY_DIR
+              value: {{ $inv | quote }}
+            - name: COVERS_DIR
+              value: /cache/covers
+            - name: WHITELIST_CONFIG_PATH
+              value: /config/whitelist-config.yaml
+            - name: WHITELIST_USERS_PATH
+              value: /secrets/users
+            - name: TMP_USERS_PATH
+              value: /cache/tmp-users.jsonl
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: AUTH_SECRET
+          volumeMounts:
+            - name: git
+              mountPath: /git
+              readOnly: true
+            - name: cache
+              mountPath: /cache
+            - name: config
+              mountPath: /config
+            - name: users
+              mountPath: /secrets
+              readOnly: true
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: git
+          emptyDir: {}
+        - name: cache
+          persistentVolumeClaim:
+            claimName: {{ include "board-games.fullname" . }}-cache
+        - name: config
+          configMap:
+            name: {{ include "board-games.fullname" . }}-roles
+        - name: users
+          secret:
+            secretName: {{ .Values.secretName }}

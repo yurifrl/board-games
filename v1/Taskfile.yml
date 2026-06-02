@@ -1,0 +1,16 @@
+version: "3"
+
+tasks:
+  envs:op:
+    desc: Resolve .env.op via 1Password CLI into .env
+    generates:
+      - .env
+    cmds:
+      - op inject -f --account my.1password.com -i .env.op -o .env
+
+  covers:
+    desc: "Build-time: download missing/upgradable board-game covers into the local cache"
+    deps: [envs:op]
+    dotenv: ['.env']
+    cmds:
+      - bun run src/cli/sync-covers.ts
