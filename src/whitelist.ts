@@ -41,7 +41,19 @@ interface User {
 
 const CAP_KEYS = ["canSeePrices", "canBid", "admin"] as const;
 // Secret keys that are NOT users (config/secret values sharing the same Secret).
-const RESERVED_KEYS = new Set(["notesPlain", "AUTH_SECRET", "WHATSAPP_NUMBER", "GITSYNC_PASSWORD"]);
+// Secret keys that are NOT users (config/token values sharing the same Secret).
+const RESERVED_KEYS = new Set([
+  "notesPlain",
+  "AUTH_SECRET",
+  "WHATSAPP_NUMBER",
+  "GITSYNC_PASSWORD",
+  "GITHUB_TOKEN",
+  "BOARDGAMES_TOKEN",
+  "LUDOPEDIA_APP_ID",
+  "LUDOPEDIA_APP_KEY",
+  "LUDOPEDIA_ACESS_TOKEN",
+  "LUDOPEDIA_ACCESS_TOKEN",
+]);
 const TTL_MS = 30_000;
 
 let configCache: { at: number; cfg: RoleConfig } | null = null;

@@ -34,7 +34,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: GITSYNC_PASSWORD
+                  key: GITHUB_TOKEN
           volumeMounts:
             - name: git
               mountPath: /git
@@ -59,7 +59,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: GITSYNC_PASSWORD
+                  key: GITHUB_TOKEN
           volumeMounts:
             - name: git
               mountPath: /git
@@ -76,6 +76,12 @@ spec:
               value: {{ $inv | quote }}
             - name: COVERS_DIR
               value: /cache/covers
+            - name: LUDOPEDIA_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: LUDOPEDIA_ACESS_TOKEN
+                  optional: true
           volumeMounts:
             - name: git
               mountPath: /git
