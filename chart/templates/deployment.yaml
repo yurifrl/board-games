@@ -24,6 +24,8 @@ spec:
               value: {{ .Values.gitSync.ref | quote }}
             - name: GITSYNC_ROOT
               value: /git
+            - name: GITSYNC_SYNC_TIMEOUT
+              value: {{ .Values.gitSync.syncTimeout | quote }}
             - name: GITSYNC_LINK
               value: repo
             - name: GITSYNC_ONE_TIME
@@ -49,6 +51,8 @@ spec:
               value: {{ .Values.gitSync.ref | quote }}
             - name: GITSYNC_ROOT
               value: /git
+            - name: GITSYNC_SYNC_TIMEOUT
+              value: {{ .Values.gitSync.syncTimeout | quote }}
             - name: GITSYNC_LINK
               value: repo
             - name: GITSYNC_PERIOD

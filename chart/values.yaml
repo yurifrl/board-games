@@ -22,6 +22,8 @@ gitSync:
   repo: https://github.com/OWNER/REPO.git
   ref: main
   period: 60s
+  # Initial clone of a large repo can exceed the 120s default -> early EOF.
+  syncTimeout: 600s
   # Inventory path inside the repo (relative to the synced checkout).
   subPath: inventory
 
