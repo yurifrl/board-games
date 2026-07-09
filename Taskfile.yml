@@ -8,9 +8,16 @@ tasks:
     cmds:
       - op inject -f --account my.1password.com -i .env.op -o .env
 
-  covers:
-    desc: "Build-time: download missing/upgradable board-game covers into the local cache"
+  sync:
+    desc: "Worker one-shot: sync catalog + users + covers from Obsidian into the volume"
     deps: [envs:op]
     dotenv: ['.env']
     cmds:
-      - bun run src/cli/sync-covers.ts
+      - SYNC_ONCE=1 bun run src/worker/index.ts
+
+  worker:
+    desc: "Worker sidecar: poll Obsidian and keep the volume in sync"
+    deps: [envs:op]
+    dotenv: ['.env']
+    cmds:
+      - bun run src/worker/index.ts

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "board-games.fullname" . }}-cache
+  name: {{ include "board-games.fullname" . }}-data
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: {{ .Values.cache.storageClass }}

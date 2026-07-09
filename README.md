@@ -1,75 +1,72 @@
 # board-games — Board Game Collection + Private Bidding
 
-A tiny Bun + Hono web app that renders a board-game collection from inventory
-`.md` notes. Whitelisted users sign in with a **stateless
-password login** (no database, no session store, no email). Games flagged
-`for_sale: true` show a price and a **Make a bid** button that opens WhatsApp
-with a prefilled message.
+A Bun + Hono web app that renders a board-game collection server-side. A
+**worker sidecar** pulls the inventory, users, and covers from an Obsidian
+vault (via the [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api))
+into a single volume; the app reads only from that volume. Whitelisted users
+sign in with a **stateless password login** (no database, no session store).
+Games flagged `for_sale: true` show a price and a **Make a bid** button that
+opens WhatsApp with a prefilled message.
 
-## Why stateless?
+## Architecture
 
-Nothing is persisted server-side. The only secret is `AUTH_SECRET` (an env var):
-
-- **Login** verifies email/name + password against the merged whitelist (plaintext, constant-time compare).
-- **Session** = a signed JWT (`{email, exp}`) in an `httpOnly` cookie.
-- The token *is* the record — no DB, no Redis, no session table.
-
-Trade-off: sessions can't be revoked early, only expire (`SESSION_TTL_DAYS=7`).
-The whitelist is re-read on **every** request (30s cache), so removing a user or
-changing a role/password takes effect on their next request.
-
-## Auth model — RBAC from two sources
-
-The effective whitelist is **merged at runtime** from:
-
-1. **Role config** (`WHITELIST_CONFIG_PATH`, YAML, non-secret — a ConfigMap in
-   k8s): role → capabilities + a `defaultRole`.
-   ```yaml
-   defaultRole: viewer
-   roles:
-     admin:  { canSeePrices: true, canBid: true, admin: true }
-     buyer:  { canSeePrices: true, canBid: true }
-     viewer: { canSeePrices: false, canBid: false }
-   ```
-2. **Users** (`WHITELIST_USERS_PATH`, one secret blob — a mounted Secret in k8s):
-   one line per user, **plaintext** password.
-   ```
-   role:identifier=password      # identifier = email or name
-   identifier=password           # no prefix -> defaultRole
-   ```
-   e.g. `admin:you@example.com=s3cret`, `viewer:foo@bar.bet=pw`. An unknown role
-   falls back to `defaultRole`.
-
-Capabilities: `admin` implies `canSeePrices` + `canBid`. Passwords are plaintext
-because the source is an encrypted Secret; they're compared in constant time.
-
-## Temporary users (JSONL store)
-
-Signed in as an **admin**, the collection page shows an *Invite a temporary user*
-form: enter an email, pick a role (preset via `DEFAULT_INVITE_ROLE`, changeable
-in the dropdown), and get a **login link**.
-
-- The temp user is appended to an append-only JSONL "database" (`TMP_USERS_PATH`)
-  — one JSON record per line, last-wins per email, with `deleted: true`
-  tombstones for revocation. No real DB.
-- Invite links **do not expire**. Access is governed by the store: a temp user's
-  roles are resolved from the JSONL on **every request**, so changing or removing
-  their record takes effect immediately.
-- The session cookie only marks the user as temporary (`tmp:true`) + their email;
-  roles are never trusted from the token, only from the store.
-- Admin role can't be granted to temp users. Temp users never see the invite form.
-
-```jsonl
-{"email":"guest@example.com","roles":["buyer"],"createdBy":"you@example.com","createdAt":"2026-05-30T12:00:00.000Z"}
-{"email":"guest@example.com","roles":[],"deleted":true,"createdAt":"2026-05-31T09:00:00.000Z"}
 ```
+Obsidian vault ──REST API──▶ Worker ──▶ Volume (DATA_DIR)
+                                   ├── catalog.json   (flattened games)
+                                   ├── users.json     (roles + permanent users)
+                                   ├── covers/<key>/  (cover cache)
+                                   └── tmp-users.jsonl (runtime temp users)
+
+                                   App ──reads──▶ Volume ──SSR──▶ HTML
+```
+
+- **Worker** (`src/worker/`): long-running sidecar (or one-shot via `SYNC_ONCE=1`).
+  Polls the Obsidian REST API every `SYNC_INTERVAL_MS`, parses the inventory
+  `.md` notes + `Users.md`, and writes `catalog.json` + `users.json` (atomic).
+  Then runs the cover pipeline into `covers/`. Self-signed TLS bypass is
+  worker-only.
+- **App** (`src/index.ts`): reads `catalog.json` + `users.json` from the volume,
+  groups games, applies the viewer's permission, and server-renders the page.
+  Never talks to Obsidian directly.
+- **Temp users** (`tmp-users.jsonl`): runtime state created by the admin invite
+  flow; lives in the volume, the worker never touches it.
+
+## Auth model — roles + users from `Users.md`
+
+`Users.md` (in the vault, at `Yuri/Resources/Board Games/Users.md`) holds both
+the role config and the permanent user list:
+
+```yaml
+---
+defaultRole: viewer
+roles:
+  admin:  { canSeePrices: true, canBid: true, admin: true }
+  buyer:  { canSeePrices: true, canBid: true }
+  viewer: { canSeePrices: false, canBid: false }
+users:
+  - identifier: you@example.com
+    password: admin-password
+    role: admin
+  - identifier: friend@example.com
+    password: buyer-password
+    role: buyer
+---
+```
+
+The worker syncs this into `users.json` on the volume; the app reads from there
+(30s cache). Passwords are plaintext in the vault and compared in constant time.
+
+### Temporary users (JSONL store)
+
+Signed in as admin, the collection page shows an *Invite a temporary user* form:
+enter an email, pick a role, get a **login link** that never expires. The temp
+user is appended to `tmp-users.jsonl`; access is governed there (remove the
+record to revoke). Admin role can't be granted to temp users.
 
 ## Expansions
 
 Games with `type: "expansion"` and an `expansion-of:` matching a base game's
-`name` are **nested under that base game** in the UI (each expansion keeps its
-own for-sale/price/bid controls). An expansion whose base game isn't in the
-collection is shown as its own top-level card so nothing disappears.
+`name` are nested under that base in the UI. Orphans show as top-level cards.
 
 | Capability     | Effect                                                       |
 |----------------|--------------------------------------------------------------|
@@ -79,90 +76,60 @@ collection is shown as its own top-level card so nothing disappears.
 
 ## Covers (local cache, pluggable sources)
 
-Game covers live in a **local cache** at `data/<note-id>/` (`cover.jpg` + a
-`cover.json` metadata sidecar). The running app serves only from this cache
-(`GET /covers/:id`) and **never depends on a remote**.
+Covers live in `data/covers/<source>-<id>/` (`cover.jpg` + `cover.json` sidecar),
+filled idempotently by the worker. The app serves them via `GET /covers/:id` and
+never depends on a remote. Sources: `LudopediaProvider` (tier 30, full-res) and
+`BggImageProvider` (tier 10, the `image/grid` fallback). Add a provider in
+`src/covers/index.ts`; nothing else changes. The resolver skips covers already
+cached at an equal/better tier, upgrades when a better source appears, and never
+downgrades.
 
-The cache is filled by an idempotent build-time tool (`src/covers/`):
+## Inventory note format
 
-```bash
-bun run covers     # sync missing/upgradable covers (no creds needed for the common path)
-task covers        # same, with .env injected from 1Password (enables id resolution)
-```
-
-Architecture (`src/covers/`):
-- **`CoverProvider`** — a pluggable source. Built-in: `LudopediaProvider`
-  (tier 30, full-res, public bucket) and `BggImageProvider` (tier 10, the
-  `image/grid` fallback). Add a provider in `index.ts`; nothing else changes.
-- **`CoverResolver`** — tries providers by descending tier, skips covers already
-  cached at an equal/better tier (idempotent), **upgrades** when a better source
-  becomes reachable, and falls back without ever downgrading a good cover.
-- **`FsCoverStore`** — persists bytes + metadata (source, tier, sha256).
-- A provider that's rate-limited raises `ProviderUnavailableError`, so the run
-  **defers** that game (keeps any existing cover) and a later run retries it.
-
-Run `bun run covers` before `docker build` (covers are baked into the image).
-
-## Data source (baked into the image)
-
-Games are parsed from the YAML frontmatter of the `.md` files in `INVENTORY_DIR`.
-The image is **public and carries no data** — at runtime a `git-sync` sidecar
-pulls the inventory repo into a volume and the app reads it from there (see the
-`chart/`). Recognized fields: `id`, `name`, `language`, `type`, `expansion-of`,
-`price`, `purchase/source`, `purchase/date`, `tags`, `bgg/url`, `bgg/id`,
-`ludopedia/url`, `ludopedia/id`, `image/grid`. See `chart/examples/inventory/`
-for the format.
-
-For local dev, point `INVENTORY_DIR` at a folder of `.md` notes.
-
-To list a game for sale, add to its frontmatter:
+Games are parsed from the YAML frontmatter of `.md` files in the vault folder
+`Yuri/Resources/Board Games/Inventory`. Recognized fields: `id`, `name`,
+`language`, `type`, `expansion-of`, `price`, `purchase/source`,
+`purchase/date`, `tags`, `bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`,
+`image/grid`. To list a game for sale:
 
 ```yaml
 for_sale: true
 sale_price: "R$ 250,00"   # optional; falls back to `price`
 ```
 
-## What's baked in vs. mounted
+## Configuration
 
-| Data | Default path | In image? | Override |
-|------|--------------|-----------|----------|
-| Inventory `.md` | `/app/inventory` | ✅ baked | mount over it, or set `INVENTORY_DIR` |
-| Covers | `/app/data` | ✅ baked | set `COVERS_DIR` |
-| Role config (`whitelist-config.yaml`) | `/app/whitelist-config.yaml` | ✅ baked default | mount a **ConfigMap**, or set `WHITELIST_CONFIG_PATH` |
-| Users (`role:identifier=password` blob) | `/secrets/users` | ❌ **not baked** | mount a **Secret**, or set `WHITELIST_USERS_PATH` |
-| `tmp-users.jsonl` (temp-user db) | `/data/tmp-users.jsonl` | writable dir created in image | mount a volume to persist across restarts |
-
-User credentials are **never** baked into the image (excluded from the build
-context too) — they come from a mounted Secret. The role config is baked as a
-non-secret default and overridable by a ConfigMap. Only the temp-user store
-needs writable storage.
+| Env | Default | Purpose |
+|-----|---------|---------|
+| `DATA_DIR` | `./data` | Single volume: catalog, users, covers, tmp-users |
+| `AUTH_SECRET` | — | HMAC secret for session cookies (generate: `openssl rand -hex 32`) |
+| `BASE_URL` | `http://localhost:3000` | Public base URL (cookie Secure flag auto-set on https) |
+| `WHATSAPP_NUMBER` | — | WhatsApp number in international format, digits only |
+| `OBSIDIAN_API_URL` | `https://localhost:27124` | Obsidian Local REST API URL (worker only) |
+| `OBSIDIAN_API_KEY` | — | Obsidian API key (worker only) |
+| `OBSIDIAN_INVENTORY_FOLDER` | `Yuri/Resources/Board Games/Inventory` | Vault folder (worker) |
+| `OBSIDIAN_USERS_NOTE` | `Yuri/Resources/Board Games/Users.md` | Users note path (worker) |
+| `SYNC_INTERVAL_MS` | `300000` | Worker poll interval (worker only) |
+| `LUDOPEDIA_ACCESS_TOKEN` / `LUDOPEDIA_COOKIE` | — | Optional: resolve missing Ludopedia ids (worker) |
 
 ## Run locally
 
 ```bash
 bun install
-cp whitelist-users.example.txt whitelist-users.txt   # local users (gitignored)
 export AUTH_SECRET=$(openssl rand -hex 32)
-bun run dev   # uses ./inventory, ./whitelist-config.yaml, ./whitelist-users.txt
+SYNC_ONCE=1 bun run src/worker/index.ts   # one-shot sync from Obsidian → ./data
+bun run dev                                # app reads from ./data
 ```
 
-The example users file ships with sample logins (`you@example.com` /
-`admin-password`, etc.) — edit `whitelist-users.txt` for local use. In prod the
-users come from a mounted Secret, never this file.
+The worker needs the Obsidian Local REST API plugin running (default port 27124)
+and `OBSIDIAN_API_KEY` set (or hardcoded as a fallback in `src/worker/obsidian.ts`).
 
-## Run with Docker (self-contained)
+## Deploy (k8s)
 
-```bash
-docker build -t board-games .
-# Image bakes inventory + covers + role config; provide AUTH_SECRET, the users
-# Secret, and (optionally) a writable volume for temp users:
-docker run --rm -p 3000:3000 \
-  -e AUTH_SECRET=$(openssl rand -hex 32) \
-  -e WHATSAPP_NUMBER=5511999998888 \
-  -v "$(pwd)/whitelist-users.txt:/secrets/users:ro" \
-  -v board-games-tmpusers:/data \
-  board-games
-```
+The `chart/` deploys two containers sharing one PVC (`/data`): the worker
+(populates the volume) and the app (reads from it). Secrets (`OBSIDIAN_API_KEY`,
+`AUTH_SECRET`, optional Ludopedia creds) come from a Secret named
+`secretName`. See `chart/values.yaml`.
 
 ## Endpoints
 
@@ -173,4 +140,5 @@ docker run --rm -p 3000:3000 \
 | `POST /admin/invite` | Admin-only: mint a temp-user invite link |
 | `GET /auth/invite` | Redeem an invite link → temp session     |
 | `GET /auth/logout` | Clear the session cookie               |
+| `GET /covers/:id` | Cached cover image                       |
 | `GET /healthz`   | Health check                             |

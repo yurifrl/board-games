@@ -7,7 +7,6 @@ import {
   authenticate,
   getPermission,
   listRoles,
-  loadConfig,
   resolveExplicit,
   rolesExist,
 } from "./whitelist.ts";
@@ -31,11 +30,8 @@ if (!SECRET || SECRET === "change-me-to-a-32-byte-random-hex") {
 const BASE_URL = env("BASE_URL", "http://localhost:3000");
 const SESSION_TTL_DAYS = Number(env("SESSION_TTL_DAYS", "7"));
 const DEFAULT_INVITE_ROLE = env("DEFAULT_INVITE_ROLE", "buyer");
-const INVENTORY_DIR = env("INVENTORY_DIR", "../../../Yuri/Resources/Board Games/Inventory");
-const WHITELIST_CONFIG_PATH = env("WHITELIST_CONFIG_PATH", "./whitelist-config.yaml");
-const WHITELIST_USERS_PATH = env("WHITELIST_USERS_PATH", "./whitelist-users.txt");
-const TMP_USERS_PATH = env("TMP_USERS_PATH", "./tmp-users.jsonl");
-const COVERS_DIR = env("COVERS_DIR", "./data");
+const DATA_DIR = env("DATA_DIR", "./data");
+const TMP_USERS_PATH = env("TMP_USERS_PATH", `${DATA_DIR}/tmp-users.jsonl`);
 const WHATSAPP = env("WHATSAPP_NUMBER");
 const PORT = Number(env("PORT", "3000"));
 const SECURE = BASE_URL.startsWith("https://");
@@ -73,10 +69,10 @@ async function currentUser(c: Context) {
   if (claims.tmp) {
     const tu = await getTmpUser(TMP_USERS_PATH, claims.email);
     if (!tu) return null; // removed/revoked from the db
-    return resolveExplicit(WHITELIST_CONFIG_PATH, claims.email, tu.roles);
+    return resolveExplicit(DATA_DIR, claims.email, tu.roles);
   }
   // Permanent users: re-check the whitelist every request so revocation is immediate.
-  return getPermission(WHITELIST_CONFIG_PATH, WHITELIST_USERS_PATH, claims.email);
+  return getPermission(DATA_DIR, claims.email);
 }
 
 /** Render the public collection, optionally with the login modal overlaid. */
@@ -84,9 +80,12 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200) 
   const perm = await currentUser(c);
   const isAuthed = !!perm;
   const effective = perm ?? PUBLIC_PERM;
-  const games = await loadGames(INVENTORY_DIR);
+  const showAll = c.req.query("show") === "all";
+  const all = await loadGames(DATA_DIR);
+  const games = showAll ? all : all.filter((g) => g.isGame);
+  const hiddenCount = all.length - games.length;
   const groups = groupGames(games);
-  const roles = await listRoles(WHITELIST_CONFIG_PATH);
+  const roles = await listRoles(DATA_DIR);
   const html = collectionPage({
     groups,
     totalGames: games.length,
@@ -97,6 +96,8 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200) 
     roles: roles.filter((r) => r !== "admin"),
     defaultRole: DEFAULT_INVITE_ROLE,
     isAuthed,
+    showAll,
+    hiddenCount,
     login,
   });
   return c.html(html, status as 200);
@@ -115,7 +116,7 @@ app.post("/auth/login", async (c) => {
   if (!email || !password) {
     return renderHome(c, { error: "Email and password are required." }, 400);
   }
-  const perm = await authenticate(WHITELIST_CONFIG_PATH, WHITELIST_USERS_PATH, email, password);
+  const perm = await authenticate(DATA_DIR, email, password);
   if (!perm) {
     return renderHome(c, { error: "Invalid email or password." }, 401);
   }
@@ -132,7 +133,7 @@ app.post("/admin/invite", async (c) => {
   const email = String(form["email"] ?? "").trim().toLowerCase();
   const role = String(form["role"] ?? DEFAULT_INVITE_ROLE).trim();
   if (!email) return c.text("Email is required", 400);
-  if (role === "admin" || !(await rolesExist(WHITELIST_CONFIG_PATH, [role]))) {
+  if (role === "admin" || !(await rolesExist(DATA_DIR, [role]))) {
     return c.text("Invalid role", 400);
   }
 
@@ -163,20 +164,15 @@ app.get("/auth/logout", (c) => {
 
 app.get("/healthz", (c) => c.json({ ok: true }));
 
-// Serve cached covers from the source-keyed cache (data/<source>-<id>/cover.jpg).
+// Serve cached covers from the source-keyed cache (data/covers/<source>-<id>/cover.jpg).
 app.get("/covers/:id", async (c) => {
   const id = c.req.param("id").replace(/[^0-9A-Za-z_-]/g, "");
-  const f = Bun.file(join(COVERS_DIR, id, "cover.jpg"));
+  const f = Bun.file(join(DATA_DIR, "covers", id, "cover.jpg"));
   if (!(await f.exists())) return c.notFound();
   return new Response(f, {
     headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
   });
 });
 
-await loadConfig(WHITELIST_CONFIG_PATH).catch((err) => {
-  console.error("Failed to load whitelist:", err);
-  process.exit(1);
-});
-
-console.log(`board-games listening on :${PORT} (base ${BASE_URL})`);
+console.log(`board-games listening on :${PORT} (base ${BASE_URL}, data ${DATA_DIR})`);
 export default { port: PORT, fetch: app.fetch };

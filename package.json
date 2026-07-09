@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "covers": "bun run src/cli/sync-covers.ts"
+    "worker": "bun run src/worker/index.ts",
+    "sync": "SYNC_ONCE=1 bun run src/worker/index.ts"
   },
   "dependencies": {
     "hono": "^4.6.14",

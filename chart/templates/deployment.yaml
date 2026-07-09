@@ -1,4 +1,4 @@
-{{- $inv := printf "/git/repo/%s" .Values.gitSync.subPath -}}
+{{- $w := .Values.worker -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,91 +13,45 @@ spec:
       labels:
         app: {{ include "board-games.fullname" . }}
     spec:
-      # Populate the inventory before the app starts.
-      initContainers:
-        - name: git-sync-init
-          image: {{ .Values.gitSync.image }}
-          env:
-            - name: GITSYNC_REPO
-              value: {{ .Values.gitSync.repo | quote }}
-            - name: GITSYNC_REF
-              value: {{ .Values.gitSync.ref | quote }}
-            - name: GITSYNC_ROOT
-              value: /git
-            - name: GITSYNC_SYNC_TIMEOUT
-              value: {{ .Values.gitSync.syncTimeout | quote }}
-            - name: GITSYNC_SUBMODULES
-              value: "off"
-            - name: GITSYNC_LINK
-              value: repo
-            - name: GITSYNC_ONE_TIME
-              value: "true"
-            - name: GITSYNC_USERNAME
-              value: git
-            - name: GITSYNC_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secretName }}
-                  key: GITHUB_TOKEN
-          volumeMounts:
-            - name: git
-              mountPath: /git
       containers:
-        # Keep the inventory fresh.
-        - name: git-sync
-          image: {{ .Values.gitSync.image }}
+        # Worker: polls the Obsidian Local REST API, writes catalog + users +
+        # covers into the shared volume. The app never talks to Obsidian.
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["bun", "run", "src/worker/index.ts"]
           env:
-            - name: GITSYNC_REPO
-              value: {{ .Values.gitSync.repo | quote }}
-            - name: GITSYNC_REF
-              value: {{ .Values.gitSync.ref | quote }}
-            - name: GITSYNC_ROOT
-              value: /git
-            - name: GITSYNC_SYNC_TIMEOUT
-              value: {{ .Values.gitSync.syncTimeout | quote }}
-            - name: GITSYNC_SUBMODULES
-              value: "off"
-            - name: GITSYNC_LINK
-              value: repo
-            - name: GITSYNC_PERIOD
-              value: {{ .Values.gitSync.period | quote }}
-            - name: GITSYNC_USERNAME
-              value: git
-            - name: GITSYNC_PASSWORD
+            - name: DATA_DIR
+              value: /data
+            - name: SYNC_INTERVAL_MS
+              value: {{ (mul $w.intervalSeconds 1000) | quote }}
+            - name: OBSIDIAN_API_URL
+              value: {{ .Values.obsidianApiUrl | default "https://obsidian.default.svc:27124" | quote }}
+            - name: OBSIDIAN_INVENTORY_FOLDER
+              value: {{ $w.inventoryFolder | quote }}
+            - name: OBSIDIAN_USERS_NOTE
+              value: {{ $w.usersNote | quote }}
+            - name: OBSIDIAN_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: GITHUB_TOKEN
-          volumeMounts:
-            - name: git
-              mountPath: /git
-        {{- if .Values.coverSync.enabled }}
-        # Idempotent cover-cache populate (writes to the PVC).
-        - name: cover-sync
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          command:
-            - sh
-            - -c
-            - while true; do bun run src/cli/sync-covers.ts || true; sleep {{ .Values.coverSync.intervalSeconds }}; done
-          env:
-            - name: INVENTORY_DIR
-              value: {{ $inv | quote }}
-            - name: COVERS_DIR
-              value: /cache/covers
+                  key: OBSIDIAN_API_KEY
             - name: LUDOPEDIA_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: LUDOPEDIA_ACESS_TOKEN
+                  key: LUDOPEDIA_ACCESS_TOKEN
+                  optional: true
+            - name: LUDOPEDIA_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: LUDOPEDIA_COOKIE
                   optional: true
           volumeMounts:
-            - name: git
-              mountPath: /git
-              readOnly: true
-            - name: cache
-              mountPath: /cache
-        {{- end }}
-        # The public catalog app.
+            - name: data
+              mountPath: /data
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+        # The public catalog app. Reads only from the volume.
         - name: app
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -105,46 +59,23 @@ spec:
             - name: http
               containerPort: 8080
           env:
+            - name: DATA_DIR
+              value: /data
             - name: BASE_URL
               value: {{ .Values.baseUrl | quote }}
             - name: WHATSAPP_NUMBER
               value: {{ .Values.whatsappNumber | quote }}
-            - name: INVENTORY_DIR
-              value: {{ $inv | quote }}
-            - name: COVERS_DIR
-              value: /cache/covers
-            - name: WHITELIST_CONFIG_PATH
-              value: /config/whitelist-config.yaml
-            - name: WHITELIST_USERS_PATH
-              value: /secrets/users
-            - name: TMP_USERS_PATH
-              value: /cache/tmp-users.jsonl
             - name: AUTH_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: AUTH_SECRET
           volumeMounts:
-            - name: git
-              mountPath: /git
-              readOnly: true
-            - name: cache
-              mountPath: /cache
-            - name: config
-              mountPath: /config
-            - name: users
-              mountPath: /secrets
+            - name: data
+              mountPath: /data
               readOnly: true
           resources: {{ toYaml .Values.resources | nindent 12 }}
       volumes:
-        - name: git
-          emptyDir: {}
-        - name: cache
+        - name: data
           persistentVolumeClaim:
-            claimName: {{ include "board-games.fullname" . }}-cache
-        - name: config
-          configMap:
-            name: {{ include "board-games.fullname" . }}-roles
-        - name: users
-          secret:
-            secretName: {{ .Values.secretName }}
+            claimName: {{ include "board-games.fullname" . }}-data
