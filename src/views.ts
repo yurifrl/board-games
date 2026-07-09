@@ -19,10 +19,32 @@ function layout(title: string, body: string): string {
   :root { color-scheme: light dark; --bg:#000; --fg:#fff; --muted:#ffffffa0; --accent:#8b5cf6; --sale:#22c55e; }
   * { box-sizing: border-box; margin:0; padding:0; }
   html, body { height:100%; background:var(--bg); color:var(--fg); font-family: system-ui, -apple-system, sans-serif; }
-  body { overflow-y: scroll; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; }
+  body { overflow-y: scroll; -webkit-overflow-scrolling: touch; }
+  body.view-feed { scroll-snap-type: y mandatory; }
   body::-webkit-scrollbar { display:none; }
 
-  .feed { }
+  /* Grid view (default). Feed hidden until toggled. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2px;
+    padding: calc(58px + env(safe-area-inset-top)) 0 env(safe-area-inset-bottom);
+  }
+  @media (min-width: 640px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 960px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+  .tile { position:relative; aspect-ratio: 3/4; overflow:hidden; background:#111; text-decoration:none; }
+  .tile img { width:100%; height:100%; object-fit:cover; display:block; }
+  .tile .tname {
+    position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px;
+    font-size:13px; font-weight:600; color:#fff; line-height:1.2;
+    background: linear-gradient(to top, #000d, transparent);
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .tile .tsale { position:absolute; top:8px; left:8px; font-size:10px; font-weight:700; padding:3px 7px; border-radius:99px; background:var(--sale); color:#04120a; }
+
+  .feed { display:none; }
+  body.view-feed .grid { display:none; }
+  body.view-feed .feed { display:block; }
   .card {
     position: relative;
     height: 100vh; height: 100dvh;
@@ -42,7 +64,7 @@ function layout(title: string, body: string): string {
   }
   .card .shade {
     position: absolute; inset: 0;
-    background: linear-gradient(to top, #000f 55%, #0006 70%, transparent 100%);
+    background: linear-gradient(to top, #000e 0%, #0009 12%, #0000 38%);
     pointer-events: none;
   }
   .card .info {
@@ -161,16 +183,12 @@ function expansionRow(g: Game, perm: Permission, whatsapp: string): string {
 
 function feedCard(grp: GameGroup, perm: Permission, whatsapp: string): string {
   const g = grp.base;
-  const cover = g.hasCover
-    ? `<img class="cover" src="/covers/${esc(g.coverKey ?? "")}" alt="${esc(g.name)}" loading="lazy">`
-    : g.image
-    ? `<img class="cover" src="${esc(g.image)}" alt="${esc(g.name)}" loading="lazy">`
-    : `<div class="cover" style="display:grid;place-items:center;font-size:64px">🎲</div>`;
+  const cover = coverImg(g, "cover");
   const exps = grp.expansions.length
     ? `<div class="exps">${grp.expansions.map((e) => expansionRow(e, perm, whatsapp)).join("")}</div>`
     : "";
   const links = linksOf(g);
-  return `<section class="card">
+  return `<section class="card" id="g-${esc(g.id)}">
     ${cover}
     <div class="shade"></div>
     <div class="info">
@@ -182,6 +200,18 @@ function feedCard(grp: GameGroup, perm: Permission, whatsapp: string): string {
       ${exps}
     </div>
   </section>`;
+}
+
+function coverImg(g: Game, cls: string): string {
+  const src = g.hasCover ? `/covers/${esc(g.coverKey ?? "")}` : g.image ? esc(g.image) : "";
+  return src
+    ? `<img class="${cls}" src="${src}" alt="${esc(g.name)}" loading="lazy">`
+    : `<div class="${cls}" style="display:grid;place-items:center;font-size:64px">🎲</div>`;
+}
+
+function gridTile(grp: GameGroup, perm: Permission): string {
+  const g = grp.base;
+  return `<a class="tile" href="#g-${esc(g.id)}" onclick="setView('feed')">${coverImg(g, "timg")}${saleBadgeOf(g, perm) ? `<span class="tsale">SALE</span>` : ""}<span class="tname">${esc(g.name)}</span></a>`;
 }
 
 function inviteForm(roles: string[], defaultRole: string): string {
@@ -212,6 +242,7 @@ export function collectionPage(opts: {
 }): string {
   const { groups, totalGames, forSaleCount, perm, email, whatsapp, roles, defaultRole, isAuthed, showAll, hiddenCount, login } = opts;
   const cards = groups.map((grp) => feedCard(grp, perm, whatsapp)).join("\n");
+  const tiles = groups.map((grp) => gridTile(grp, perm)).join("");
   const isTemp = perm.roles.length > 0 && !perm.admin && !perm.name;
   const canSeeSale = !!perm.canSeePrices || !!perm.admin;
   const subtitle = canSeeSale ? `${totalGames} games · ${forSaleCount} for sale` : `${totalGames} games`;
@@ -227,17 +258,20 @@ export function collectionPage(opts: {
        <a class="btn" href="/auth/logout">Exit</a>`
     : "";
   const adminBtn = perm.admin ? `<a class="btn" href="#invitePanel" onclick="document.getElementById('invitePanel').classList.toggle('open');return false">Invite</a>` : "";
+  const viewToggle = `<button class="btn" onclick="setView(document.body.classList.contains('view-feed')?'grid':'feed')" title="Toggle grid / feed" aria-label="Toggle view">☷</button>`;
   const lockBtn = !isAuthed && !showLogin ? `<a href="/login" class="lock" title="Sign in" aria-label="Sign in">🔒</a>` : "";
 
   const body = `
   <div class="topbar">
     <div><div class="title">🎲 Collection</div><div class="sub">${esc(subtitle)}</div></div>
-    <div class="right">${filterToggle}${adminBtn}${controls}</div>
+    <div class="right">${viewToggle}${filterToggle}${adminBtn}${controls}</div>
   </div>
+  <div class="grid">${tiles}</div>
   <div class="feed">${cards}</div>
   ${perm.admin ? inviteForm(roles, defaultRole) : ""}
   ${lockBtn}
-  ${showLogin ? loginModal(login?.error) : ""}`;
+  ${showLogin ? loginModal(login?.error) : ""}
+  <script>function setView(v){document.body.className=v==='feed'?'view-feed':'';localStorage.setItem('view',v);}if(localStorage.getItem('view')==='feed')setView('feed');</script>`;
   return layout("Board Game Collection", body);
 }
 
