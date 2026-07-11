@@ -44,6 +44,12 @@ secretName: board-games
 assetsGcsBucket: ""
 gcsSecretName: board-games-gcs-creds
 
+# Pin the pod to a node. Needed on this cluster because longhorn's cross-node
+# data path is unreliable: the volume attaches cleanly only when the pod runs
+# on the same node as its replica. Empty = no pin. ponytail: workaround for
+# the cluster datapath fault (home-systems-k5b); drop once that's fixed.
+nodeSelector: {}
+
 resources:
   requests: { cpu: 50m, memory: 128Mi }
   limits:   { cpu: 500m, memory: 256Mi }

@@ -13,6 +13,10 @@ spec:
       labels:
         app: {{ include "board-games.fullname" . }}
     spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         # Worker: polls the Obsidian Local REST API, writes catalog + users +
         # covers into the shared volume. The app never talks to Obsidian.
