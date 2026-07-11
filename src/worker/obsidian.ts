@@ -41,3 +41,24 @@ export async function getNote(path: string, cfg: ObsidianConfig = defaultObsidia
   if (!res.ok) throw new Error(`get ${path}: ${res.status}`);
   return res.text();
 }
+
+/** Set (replace or create) a single frontmatter field on a note via PATCH. */
+export async function setFrontmatter(
+  path: string,
+  field: string,
+  value: string,
+  cfg: ObsidianConfig = defaultObsidianConfig(),
+): Promise<void> {
+  const res = await req(`/vault/${encodeURI(path)}`, cfg, {
+    method: "PATCH",
+    headers: {
+      Operation: "replace",
+      "Target-Type": "frontmatter",
+      Target: field,
+      "Create-Target-If-Missing": "true",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(value),
+  });
+  if (!res.ok) throw new Error(`patch ${path} (${field}): ${res.status} ${await res.text()}`);
+}
