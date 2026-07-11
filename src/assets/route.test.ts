@@ -18,6 +18,7 @@ function fakeBucket(seed: Record<string, Buffer> = {}): GcsBucketLike {
         async exists(): Promise<[boolean]> { return [blobs.has(key)]; },
         async download(): Promise<[Buffer]> { return [blobs.get(key)!]; },
         async save(data: Buffer | Uint8Array) { blobs.set(key, Buffer.from(data)); },
+        async getMetadata(): Promise<[{ metadata?: Record<string, string> }]> { return [{}]; },
       };
     },
   };

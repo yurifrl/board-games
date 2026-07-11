@@ -30,6 +30,13 @@ export interface CoverResult {
   sourceUrl: string;
   /** Source-keyed cache key this cover is stored under, e.g. `ludopedia-15950`. */
   cacheKey: string;
+  /**
+   * Stable signature of the source this cover was built from (e.g. the note's
+   * BGG image URL, or the Ludopedia id). Persisted so the resolver can detect
+   * when the source changed in Obsidian and refetch, instead of serving a stale
+   * cover forever.
+   */
+  fingerprint?: string;
 }
 
 /** Sidecar metadata persisted next to each cached cover. */
@@ -41,6 +48,8 @@ export interface CoverMeta {
   bytes: number;
   sha256: string;
   fetchedAt: string;
+  /** Source signature at fetch time; a mismatch means the note changed → refetch. */
+  sourceFingerprint?: string;
 }
 
 /**
@@ -60,6 +69,14 @@ export interface CoverProvider {
    * detect an already-cached cover without refetching.
    */
   keyFor(game: GameRef): string | null;
+  /**
+   * A stable signature of this provider's current source for the game, derivable
+   * from the note alone (no network) — e.g. the BGG image URL or the Ludopedia
+   * id. The resolver compares it to the cached cover's fingerprint to decide
+   * whether the source changed and the cover must be refetched. Return null when
+   * it can't be known up front (then the cached cover is assumed still current).
+   */
+  fingerprint(game: GameRef): string | null;
   fetch(game: GameRef): Promise<CoverResult | null>;
 }
 

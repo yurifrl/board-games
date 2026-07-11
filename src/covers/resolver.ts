@@ -31,12 +31,18 @@ export class CoverResolver {
   async resolveOne(game: GameRef): Promise<SyncResult> {
     // Best cover already cached for this game, across its source-keyed
     // candidates (a game may have both a bgg- and a ludopedia- keyed cover).
+    // A cached cover only counts if its source fingerprint still matches the
+    // note — otherwise the image changed in Obsidian and must be refetched.
     let cached: { tier: number; source: string } | null = null;
     for (const p of this.providers) {
       const key = p.keyFor(game);
       if (!key) continue;
       const m = await this.store.meta(key);
-      if (m && (!cached || m.tier > cached.tier)) cached = { tier: m.tier, source: m.source };
+      if (!m) continue;
+      const current = p.fingerprint(game);
+      const stale = current != null && m.sourceFingerprint !== current;
+      if (stale) continue;
+      if (!cached || m.tier > cached.tier) cached = { tier: m.tier, source: m.source };
     }
     const cachedTier = cached?.tier ?? -1;
     let deferred = false;

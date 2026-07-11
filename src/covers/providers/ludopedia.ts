@@ -36,6 +36,15 @@ export class LudopediaProvider implements CoverProvider {
     return game.ludopediaId ? coverKey("ludopedia", game.ludopediaId) : null;
   }
 
+  /**
+   * The Ludopedia id — the capa bucket is keyed by it, so the image only changes
+   * when the id does. Null when the note has no id (resolved at fetch time), in
+   * which case the resolver keeps the cached cover rather than refetching blindly.
+   */
+  fingerprint(game: GameRef): string | null {
+    return game.ludopediaId ?? null;
+  }
+
   async fetch(game: GameRef): Promise<CoverResult | null> {
     const id = game.ludopediaId ?? (await this.resolveId(game));
     if (!id) return null;
@@ -49,6 +58,7 @@ export class LudopediaProvider implements CoverProvider {
       tier: this.tier,
       sourceUrl: url,
       cacheKey: coverKey("ludopedia", id),
+      fingerprint: String(id),
     };
   }
 

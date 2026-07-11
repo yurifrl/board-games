@@ -52,6 +52,7 @@ export class FsCoverStore implements CoverStore {
       bytes: result.bytes.byteLength,
       sha256,
       fetchedAt: new Date().toISOString(),
+      sourceFingerprint: result.fingerprint,
     };
     await writeFile(this.imagePath(id), result.bytes);
     await writeFile(this.metaPath(id), JSON.stringify(meta, null, 2));

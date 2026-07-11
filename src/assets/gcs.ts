@@ -12,7 +12,8 @@ export interface GcsBucketLike {
   file(key: string): {
     exists(): Promise<[boolean]>;
     download(): Promise<[Buffer]>;
-    save(data: Buffer | Uint8Array, opts?: { contentType?: string }): Promise<void>;
+    save(data: Buffer | Uint8Array, opts?: { contentType?: string; metadata?: { metadata?: Record<string, string> } }): Promise<void>;
+    getMetadata(): Promise<[{ metadata?: Record<string, string | number | boolean | null> }, ...unknown[]]>;
   };
 }
 
@@ -42,7 +43,16 @@ export class GcsStore {
     return new Uint8Array(buf);
   }
 
-  async put(key: string, bytes: Uint8Array, contentType = "image/jpeg"): Promise<void> {
-    await this.bucket.file(key).save(bytes, { contentType });
+  /** Custom metadata stored on the object (e.g. the source cover's sha256), or null if absent. */
+  async metadata(key: string): Promise<Record<string, string | number | boolean | null> | null> {
+    const file = this.bucket.file(key);
+    const [exists] = await file.exists();
+    if (!exists) return null;
+    const [md] = await file.getMetadata();
+    return md.metadata ?? {};
+  }
+
+  async put(key: string, bytes: Uint8Array, contentType = "image/jpeg", metadata?: Record<string, string>): Promise<void> {
+    await this.bucket.file(key).save(bytes, { contentType, ...(metadata ? { metadata: { metadata } } : {}) });
   }
 }
