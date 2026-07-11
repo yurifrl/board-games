@@ -12,11 +12,13 @@ export interface SyncResult {
 }
 
 /**
- * Orchestrates providers to fill the cover cache. For each game it tries
- * providers in descending quality tier, skipping anything already cached at an
- * equal-or-better tier (idempotent), upgrading when a better source is now
- * reachable, and falling back to a lower tier when a better one is temporarily
- * unavailable — without ever downgrading an existing good cover.
+ * Orchestrates providers to fill the cover cache. To build a complete image
+ * archive it fetches from EVERY provider that can serve a game (both BGG and
+ * Ludopedia), storing each under its own source-keyed cache entry — so both
+ * sources' covers are kept, not just the best one. Each source is hit at most
+ * once: a cached cover is refetched only when its source fingerprint changed in
+ * Obsidian (the image/id was edited). A temporarily-unavailable provider is
+ * deferred to the next run without dropping the others.
  */
 export class CoverResolver {
   private readonly providers: CoverProvider[];
@@ -29,51 +31,44 @@ export class CoverResolver {
   }
 
   async resolveOne(game: GameRef): Promise<SyncResult> {
-    // Best cover already cached for this game, across its source-keyed
-    // candidates (a game may have both a bgg- and a ludopedia- keyed cover).
-    // A cached cover only counts if its source fingerprint still matches the
-    // note — otherwise the image changed in Obsidian and must be refetched.
-    let cached: { tier: number; source: string } | null = null;
+    let fetched = false; // did we pull anything new this run
+    let deferred = false;
+    const have: { tier: number; source: string }[] = []; // covers present after this run
+
     for (const p of this.providers) {
       const key = p.keyFor(game);
       if (!key) continue;
       const m = await this.store.meta(key);
-      if (!m) continue;
       const current = p.fingerprint(game);
-      const stale = current != null && m.sourceFingerprint !== current;
-      if (stale) continue;
-      if (!cached || m.tier > cached.tier) cached = { tier: m.tier, source: m.source };
-    }
-    const cachedTier = cached?.tier ?? -1;
-    let deferred = false;
-
-    for (const p of this.providers) {
-      if (cachedTier >= p.tier) break; // nothing better remains to try
+      // A cached cover is current unless its source changed in Obsidian.
+      const fresh = m != null && (current == null || m.sourceFingerprint === current);
+      if (fresh) {
+        have.push({ tier: m.tier, source: m.source });
+        continue; // hit the source at most once
+      }
       try {
         const res = await p.fetch(game);
         if (res) {
           await this.store.write(res.cacheKey, res);
-          return {
-            id: game.id,
-            name: game.name,
-            outcome: cached ? "upgraded" : "fetched",
-            source: res.source,
-            tier: res.tier,
-          };
+          fetched = true;
+          have.push({ tier: res.tier, source: res.source });
         }
       } catch (e) {
         if (e instanceof ProviderUnavailableError) {
-          deferred = true; // try a lower tier as a fallback, but keep retrying this one next run
+          deferred = true; // retry this source next run; keep the others
+          if (m) have.push({ tier: m.tier, source: m.source }); // fall back to the stale copy
           continue;
         }
         throw e;
       }
     }
 
-    if (cached) {
-      return { id: game.id, name: game.name, outcome: deferred ? "deferred" : "cached", source: cached.source, tier: cached.tier };
+    if (have.length === 0) {
+      return { id: game.id, name: game.name, outcome: deferred ? "deferred" : "missing" };
     }
-    return { id: game.id, name: game.name, outcome: deferred ? "deferred" : "missing" };
+    const best = have.reduce((a, b) => (b.tier > a.tier ? b : a));
+    const outcome: Outcome = fetched ? "fetched" : deferred ? "deferred" : "cached";
+    return { id: game.id, name: game.name, outcome, source: best.source, tier: best.tier };
   }
 
   async sync(games: GameRef[], onResult?: (r: SyncResult) => void): Promise<SyncResult[]> {

@@ -23,3 +23,10 @@ test("expired signature fails", () => {
   const q = new URLSearchParams(sign({ id: "uuid-1", w: 300 }, -1));
   expect(verify("uuid-1", q)).toBe(false);
 });
+
+test("source is part of the signature", () => {
+  const q = new URLSearchParams(sign({ id: "uuid-1", source: "bgg", w: 300 }));
+  expect(verify("uuid-1", q)).toBe(true);
+  q.set("source", "ludopedia"); // tampering the source invalidates it
+  expect(verify("uuid-1", q)).toBe(false);
+});

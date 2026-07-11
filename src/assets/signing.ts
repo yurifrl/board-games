@@ -12,6 +12,8 @@ export interface AssetParams {
   id: string;
   w?: number;
   h?: number;
+  /** Which source's image (e.g. "bgg", "ludopedia"). */
+  source?: string;
 }
 
 const secret = (): string => {
@@ -20,17 +22,18 @@ const secret = (): string => {
   return s;
 };
 
-const payload = (p: AssetParams, exp: number): string => `${p.id}\n${p.w ?? ""}\n${p.h ?? ""}\n${exp}`;
+const payload = (p: AssetParams, exp: number): string => `${p.id}\n${p.w ?? ""}\n${p.h ?? ""}\n${p.source ?? ""}\n${exp}`;
 
 const hmac = (data: string): string => createHmac("sha256", secret()).update(data).digest("hex");
 
-/** Build a signed query string (`?w=&h=&exp=&sig=`) valid for `ttlSeconds`. */
+/** Build a signed query string (`?w=&h=&source=&exp=&sig=`) valid for `ttlSeconds`. */
 export function sign(p: AssetParams, ttlSeconds = 3600): string {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const sig = hmac(payload(p, exp));
   const q = new URLSearchParams();
   if (p.w != null) q.set("w", String(p.w));
   if (p.h != null) q.set("h", String(p.h));
+  if (p.source) q.set("source", p.source);
   q.set("exp", String(exp));
   q.set("sig", sig);
   return q.toString();
@@ -46,6 +49,7 @@ export function verify(id: string, query: URLSearchParams): boolean {
     id,
     w: query.get("w") ? Number(query.get("w")) : undefined,
     h: query.get("h") ? Number(query.get("h")) : undefined,
+    source: query.get("source") ?? undefined,
   };
   const expected = hmac(payload(p, exp));
   const a = Buffer.from(sig);

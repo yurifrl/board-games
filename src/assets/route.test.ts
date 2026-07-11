@@ -37,15 +37,15 @@ async function build(seed: Record<string, Buffer> = {}, fillable = new Set<strin
   });
 }
 
-const url = (id: string, w?: number, h?: number) => `http://x/${id}?${sign({ id, w, h })}`;
+const url = (id: string, w?: number, h?: number) => `http://x/${id}?${sign({ id, source: "bgg", w, h })}`;
 
 test("401 without valid signature", async () => {
   const app = await build();
-  expect((await app.request("http://x/uuid-1?w=100")).status).toBe(401);
+  expect((await app.request("http://x/uuid-1?w=100&source=bgg")).status).toBe(401);
 });
 
-test("resizes GCS original and serves 200", async () => {
-  const app = await build({ "uuid-1/original.jpg": await jpeg() });
+test("resizes GCS source original and serves 200", async () => {
+  const app = await build({ "uuid-1/bgg.jpg": await jpeg() });
   const res = await app.request(url("uuid-1", 300, 300));
   expect(res.status).toBe(200);
   const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();

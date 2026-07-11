@@ -4,7 +4,8 @@ import { GcsStore } from "./gcs.ts";
 import { resize } from "./resize.ts";
 import { verify } from "./signing.ts";
 
-const originalKey = (id: string) => `${id}/original.jpg`;
+const sourceKey = (id: string, source: string) => `${id}/${source}.jpg`;
+const DEFAULT_SOURCE = "bgg";
 
 export interface AssetDeps {
   store: AssetStore;
@@ -14,9 +15,9 @@ export interface AssetDeps {
 }
 
 /**
- * Read-side handler. GET /:id?w=&h=&sig=&exp=
- *   verify sig+exp (401) -> local variant (200) -> GCS original: resize+cache (200)
- *   -> 202 (fillable, not yet synced) / 404 (no provider id, nothing will fill).
+ * Read-side handler. GET /:id?source=&w=&h=&sig=&exp=
+ *   verify sig+exp (401) -> local variant (200) -> GCS <id>/<source>.jpg:
+ *   resize+cache (200) -> 202 (fillable, not yet synced) / 404 (nothing will fill).
  */
 export function buildAssetsRoute(deps: AssetDeps): Hono {
   const app = new Hono();
@@ -28,24 +29,26 @@ export function buildAssetsRoute(deps: AssetDeps): Hono {
     const query = new URL(c.req.url).searchParams;
     if (!verify(id, query)) return c.text("bad signature", 401);
 
+    const source = (query.get("source") || DEFAULT_SOURCE).replace(/[^a-z]/g, "");
     const w = query.get("w") ? Number(query.get("w")) : undefined;
     const h = query.get("h") ? Number(query.get("h")) : undefined;
 
-    const cached = await deps.store.get(id, w, h);
+    const cached = await deps.store.get(id, source, w, h);
     if (cached) return image(cached);
 
-    let original = await deps.store.get(id);
+    let original = await deps.store.get(id, source);
     if (!original) {
-      const fromGcs = await deps.gcs.get(originalKey(id));
+      const fromGcs = await deps.gcs.get(sourceKey(id, source));
       if (fromGcs) {
-        await deps.store.put(id, fromGcs);
+        await deps.store.put(id, source, fromGcs);
         original = fromGcs;
       }
     }
 
     if (!original) {
-      if (known404.has(id) || !(await deps.isFillable(id))) {
-        known404.add(id);
+      const cacheTag = `${id}/${source}`;
+      if (known404.has(cacheTag) || !(await deps.isFillable(id))) {
+        known404.add(cacheTag);
         return c.text("no image for this game", 404);
       }
       return c.text("not yet available", 202);
@@ -53,7 +56,7 @@ export function buildAssetsRoute(deps: AssetDeps): Hono {
 
     if (w == null && h == null) return image(original);
     const variant = await resize(original, w, h);
-    await deps.store.put(id, variant, w, h);
+    await deps.store.put(id, source, variant, w, h);
     return image(variant);
   });
 

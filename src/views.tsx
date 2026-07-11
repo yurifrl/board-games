@@ -4,8 +4,12 @@ import type { Permission } from "./whitelist.ts";
 import { sign } from "./assets/signing.ts";
 
 // Signed assets URL when GCS is configured; else the legacy FS cover route.
+// Prefer BGG's full-res original, falling back to Ludopedia.
 const coverSrc = (g: Game): string => {
-  if (process.env.ASSETS_GCS_BUCKET) return `/assets/${g.id}?${sign({ id: g.id, w: 400 })}`;
+  if (process.env.ASSETS_GCS_BUCKET) {
+    const source = g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
+    if (source) return `/assets/${g.id}?${sign({ id: g.id, source, w: 400 })}`;
+  }
   return g.hasCover ? `/covers/${g.coverKey ?? ""}` : g.image ?? "";
 };
 
