@@ -7,17 +7,15 @@
  *
  * The app reads only from the volume; it never talks to Obsidian directly.
  */
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { loadGames, type Game } from "../games.ts";
-import { coverKeyCandidates } from "../covers/keys.ts";
-import { buildCoverResolver } from "../covers/index.ts";
-import type { GameRef } from "../covers/types.ts";
-import { GcsStore } from "../assets/gcs.ts";
-import { uploadOriginals } from "../assets/fill.ts";
+import { type Game } from "../games.ts";
+import { buildAssetPlatform } from "../asset/platform.ts";
+import { runPipeline } from "../asset/pipeline.ts";
+import { dominantColor } from "../asset/tint.ts";
+import type { AssetService } from "../asset/service.ts";
+import type { Entity } from "../asset/types.ts";
 import { defaultObsidianConfig, listNotes, getNote } from "./obsidian.ts";
 import { parseGameNote, parseUsersNote } from "./parse.ts";
-import { writeCatalog, writeUsers, storePaths, type UsersFile } from "../store.ts";
+import { writeCatalog, writeUsers, type UsersFile } from "../store.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
@@ -29,7 +27,7 @@ const SYNC_ONCE = env("SYNC_ONCE") === "1";
 
 const slugOf = (url?: string) => url?.match(/jogo\/([^/?#]+)/)?.[1]?.toLowerCase();
 
-function toRef(g: Game): GameRef {
+function toEntity(g: Game): Entity {
   return {
     id: g.id,
     name: g.name,
@@ -48,18 +46,12 @@ async function syncCatalog(): Promise<Game[]> {
     try {
       const raw = await getNote(`${OBSIDIAN_INVENTORY_FOLDER}/${name}`, cfg);
       const g = parseGameNote(raw);
-      if (g) {
-        const coverKey = coverKeyCandidates(g).find((k) => existsSync(join(storePaths(DATA_DIR).covers, k, "cover.jpg")));
-        g.coverKey = coverKey;
-        g.hasCover = !!coverKey;
-        games.push(g);
-      }
+      if (g) games.push(g);
     } catch (e) {
       console.error(`  skip ${name}: ${(e as Error).message}`);
     }
   }
   games.sort((a, b) => a.name.localeCompare(b.name));
-  await writeCatalog(DATA_DIR, games);
   return games;
 }
 
@@ -75,39 +67,39 @@ async function syncUsers(): Promise<void> {
   await writeUsers(DATA_DIR, data);
 }
 
-async function syncCovers(games: Game[]): Promise<void> {
-  const resolver = buildCoverResolver({
-    coversDir: storePaths(DATA_DIR).covers,
-    ludopedia: {
-      token: env("LUDOPEDIA_ACCESS_TOKEN"),
-      cookie: env("LUDOPEDIA_COOKIE"),
-    },
-  });
+async function syncAssets(games: Game[], service: AssetService, sources: import("../asset/types.ts").AssetSource[]): Promise<void> {
   const tally: Record<string, number> = {};
-  await resolver.sync(games.map(toRef), (r) => {
+  await runPipeline(games.map(toEntity), sources, service, (r) => {
     tally[r.outcome] = (tally[r.outcome] ?? 0) + 1;
-    if (r.outcome === "fetched" || r.outcome === "upgraded")
-      console.log(`  ${r.outcome.padEnd(8)} ${r.name} <- ${r.source}`);
+    if (r.outcome === "stored") console.log(`  stored   ${r.entity} <- ${r.source}/${r.kind}`);
   });
-  const summary = Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(" ");
-  console.log(`  covers: ${summary}`);
-  await uploadCovers(games);
+  console.log(`  assets: ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(" ")}`);
 }
 
-async function uploadCovers(games: Game[]): Promise<void> {
-  if (!process.env.ASSETS_GCS_BUCKET) return; // GCS not configured (e.g. local dev)
-  const n = await uploadOriginals(games, storePaths(DATA_DIR).covers, new GcsStore());
-  console.log(`  gcs: uploaded=${n}`);
+/** Enrich each game with its cover's dominant color, read from the stored cover. */
+async function enrichTint(games: Game[], service: AssetService): Promise<void> {
+  for (const g of games) {
+    const source = g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
+    if (!source) continue;
+    const blob = await service.render({ entity: g.id, kind: "cover", source, variant: "original", ext: "jpg" }, new URLSearchParams());
+    if (blob) g.tint = (await dominantColor(blob)) ?? undefined;
+  }
 }
 
 async function cycle(): Promise<void> {
   console.log(`[${new Date().toISOString()}] sync start`);
   try {
+    const { service, sources } = buildAssetPlatform({
+      dataDir: DATA_DIR,
+      ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
+    });
     const games = await syncCatalog();
     console.log(`  catalog: ${games.length} games`);
     await syncUsers();
     console.log(`  users: synced`);
-    await syncCovers(games);
+    await syncAssets(games, service, sources);
+    await enrichTint(games, service);
+    await writeCatalog(DATA_DIR, games);
   } catch (e) {
     console.error(`sync failed: ${(e as Error).message}`);
   }

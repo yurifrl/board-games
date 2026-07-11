@@ -17,9 +17,8 @@ export type Game = {
   bggId?: string;
   ludopediaId?: string;
   image?: string;
-  hasCover?: boolean;
-  /** Source-keyed cache dir to serve the cover from, e.g. `ludopedia-15950`. */
-  coverKey?: string;
+  /** Dominant cover color (#rrggbb) used to tint the 3D box + stage; set at sync. */
+  tint?: string;
   /** True for actual games (excludes items tagged book / skip / tcg). */
   isGame: boolean;
   /** Purchase date as epoch ms (for sorting), or null when unknown/unparseable. */

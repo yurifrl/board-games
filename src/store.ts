@@ -4,7 +4,7 @@
  *   <root>/catalog.json     flattened Game array (atomic rewrite)
  *   <root>/users.json       roles config + permanent users
  *   <root>/tmp-users.jsonl  runtime temp users (app writes, worker ignores)
- *   <root>/covers/<key>/    cover cache (unchanged)
+ *   <root>/assets/          asset cache (covers + rulebooks), see src/asset/
  *
  * All of it lives under one path so a single mounted volume persists everything.
  */
@@ -43,7 +43,6 @@ export function storePaths(root: string) {
     catalog: `${root}/catalog.json`,
     users: `${root}/users.json`,
     tmpUsers: `${root}/tmp-users.jsonl`,
-    covers: `${root}/covers`,
     root,
   };
 }

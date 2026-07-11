@@ -2,16 +2,17 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
 import type { Game, GameGroup } from "./games.ts";
 import type { Permission } from "./whitelist.ts";
-import { sign } from "./assets/signing.ts";
+import { sign } from "./asset/auth.ts";
 
-// Signed assets URL when GCS is configured; else the legacy FS cover route.
-// Prefer BGG's full-res original, falling back to Ludopedia.
+// Signed cover URL: prefer BGG's full-res original, fall back to Ludopedia,
+// else the note's raw image / a placeholder.
 const coverSrc = (g: Game): string => {
-  if (process.env.ASSETS_GCS_BUCKET) {
-    const source = g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
-    if (source) return `/assets/${g.id}?${sign({ id: g.id, source, w: 400 })}`;
+  const source = g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
+  if (source) {
+    const key = { entity: g.id, kind: "cover", source, variant: "original", ext: "jpg" };
+    return `/asset/${g.id}/cover/${source}/original.jpg?${sign(key, { w: 400 })}`;
   }
-  return g.hasCover ? `/covers/${g.coverKey ?? ""}` : g.image ?? "";
+  return g.image ?? "";
 };
 
 const canSeeSale = (perm: Permission) => !!perm.canSeePrices || !!perm.admin;

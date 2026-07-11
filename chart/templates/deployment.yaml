@@ -86,16 +86,18 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: AUTH_SECRET
+            # Shared bearer token for rulebook ingest + agent reads (Hermes).
+            - name: ASSET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: ASSET_TOKEN
+                  optional: true
             {{- if .Values.assetsGcsBucket }}
             - name: ASSETS_GCS_BUCKET
               value: {{ .Values.assetsGcsBucket | quote }}
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: /var/secrets/gcp/key.json
-            - name: ASSETS_SIGNING_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secretName }}
-                  key: AUTH_SECRET
             {{- end }}
           volumeMounts:
             - name: data

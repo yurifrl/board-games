@@ -19,9 +19,7 @@ import {
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
 import { collectionPage, invitePage } from "./views.tsx";
-import { buildAssetsRoute } from "./assets/route.ts";
-import { AssetStore } from "./assets/store.ts";
-import { GcsStore } from "./assets/gcs.ts";
+import { buildAssetPlatform } from "./asset/platform.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
@@ -174,30 +172,14 @@ app.get("/styles.css", async (c) => {
   });
 });
 
-// Serve cached covers from the source-keyed cache (data/covers/<source>-<id>/cover.jpg).
-app.get("/covers/:id", async (c) => {
-  const id = c.req.param("id").replace(/[^0-9A-Za-z_-]/g, "");
-  const f = Bun.file(join(DATA_DIR, "covers", id, "cover.jpg"));
-  if (!(await f.exists())) return c.notFound();
-  return new Response(f, {
-    headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
-  });
+// Assets: covers (pulled from BGG/Ludopedia) + rulebooks (pushed by agents).
+// Browser reads via signed URLs; agents read + ingest via the shared token.
+const assets = buildAssetPlatform({
+  dataDir: DATA_DIR,
+  ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
 });
-
-// Assets API: signed, resized images backed by the private GCS bucket.
-if (env("ASSETS_GCS_BUCKET")) {
-  app.route(
-    "/assets",
-    buildAssetsRoute({
-      store: new AssetStore(join(DATA_DIR, "assets")),
-      gcs: new GcsStore(),
-      isFillable: async (id) => {
-        const games = await loadGames(DATA_DIR);
-        return games.some((g) => g.id === id && (!!g.bggId || !!g.ludopediaId));
-      },
-    }),
-  );
-}
+app.route("/", assets.serve);
+app.route("/", assets.ingest);
 
 console.log(`board-games listening on :${PORT} (base ${BASE_URL}, data ${DATA_DIR})`);
 export default { port: PORT, fetch: app.fetch };
