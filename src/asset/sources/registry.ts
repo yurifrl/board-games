@@ -1,8 +1,9 @@
 import type { AssetSource } from "../types.ts";
-import { BggCoverSource } from "./bgg-cover.ts";
+import { BggCoverSource, type BggConfig } from "./bgg-cover.ts";
 import { LudopediaCoverSource, type LudopediaConfig } from "./ludopedia-cover.ts";
 
 export interface SourcesConfig {
+  bgg?: BggConfig;
   ludopedia?: LudopediaConfig;
 }
 
@@ -11,5 +12,5 @@ export interface SourcesConfig {
  * a new site or asset kind is one new AssetSource here, no branching elsewhere.
  */
 export function buildSources(cfg: SourcesConfig = {}): AssetSource[] {
-  return [new BggCoverSource(), new LudopediaCoverSource(cfg.ludopedia)];
+  return [new BggCoverSource(cfg.bgg), new LudopediaCoverSource(cfg.ludopedia)];
 }

@@ -47,7 +47,6 @@ export interface Entity {
   id: string;
   name: string;
   bggId?: string;
-  bggImageUrl?: string;
   ludopediaId?: string;
   ludopediaSlug?: string;
 }

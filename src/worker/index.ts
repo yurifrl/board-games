@@ -32,7 +32,6 @@ function toEntity(g: Game): Entity {
     id: g.id,
     name: g.name,
     bggId: g.bggId,
-    bggImageUrl: g.image,
     ludopediaId: g.ludopediaId,
     ludopediaSlug: slugOf(g.urlLudopedia),
   };
@@ -91,6 +90,7 @@ async function cycle(): Promise<void> {
   try {
     const { service, sources } = buildAssetPlatform({
       dataDir: DATA_DIR,
+      bgg: { bearerToken: env("BGG_BEARER_TOKEN") },
       ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
     });
     const games = await syncCatalog();

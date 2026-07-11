@@ -1,58 +1,53 @@
-import type { AssetBlob, AssetSource, DiscoveredAsset, Entity } from "../types.ts";
+import { SourceUnavailableError, type AssetBlob, type AssetSource, type DiscoveredAsset, type Entity } from "../types.ts";
 
 const UA = "Mozilla/5.0 Chrome/120";
-const IMAGES_API = (picId: string) => `https://api.geekdo.com/api/images/${picId}`;
 
-/** The pic id embedded in a geekdo image URL (`.../pic8907965.jpg`). */
-export const picIdFromUrl = (url: string): string | null => url.match(/\/pic(\d+)\./)?.[1] ?? null;
+export interface BggConfig {
+  /** BGG API bearer token (BGG_BEARER_TOKEN) — the XML API is 401 without it. */
+  bearerToken?: string;
+}
 
 /**
- * BoardGameGeek cover. The note stores a low-res grid thumbnail URL
- * (`image/grid`) that embeds the image's pic id; we resolve that to the
- * full-res `original` via the public geekdo images API (BGG's XML API is
- * 401-blocked). Fingerprinted by the grid URL, so a changed image in Obsidian
- * refetches. One asset: the cover original.
+ * BoardGameGeek cover, fetched from the source by `bgg/id` via the XML API
+ * (`xmlapi2/thing`), which returns the primary `<image>` at full resolution.
+ * The note's `image/grid` thumbnail is NOT used — the id is the source of
+ * truth. Fingerprinted by the id, so re-mapping a game's `bgg/id` refetches;
+ * editing unrelated fields doesn't.
  */
 export class BggCoverSource implements AssetSource {
   readonly id = "bgg";
   readonly kind = "cover";
   readonly priority = 20;
 
+  constructor(private readonly cfg: BggConfig = {}) {}
+
   async discover(e: Entity): Promise<DiscoveredAsset[]> {
-    if (!e.bggId || !e.bggImageUrl) return [];
-    const gridUrl = e.bggImageUrl;
+    if (!e.bggId) return [];
+    const bggId = e.bggId;
     return [
       {
         key: { entity: e.id, kind: this.kind, source: this.id, variant: "original", ext: "jpg" },
-        fingerprint: gridUrl,
-        fetch: () => fetchBest(gridUrl),
+        fingerprint: `bgg:${bggId}`,
+        fetch: () => this.fetchCover(bggId),
       },
     ];
   }
-}
 
-async function fetchBest(gridUrl: string): Promise<AssetBlob> {
-  const url = (await bestVariant(gridUrl)) ?? gridUrl;
-  const r = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!r.ok) throw new Error(`bgg image ${r.status}`);
-  return {
-    bytes: new Uint8Array(await r.arrayBuffer()),
-    contentType: r.headers.get("content-type") ?? "image/jpeg",
-    fingerprint: gridUrl,
-  };
-}
+  private async fetchCover(bggId: string): Promise<AssetBlob> {
+    const headers: Record<string, string> = { "User-Agent": UA };
+    if (this.cfg.bearerToken) headers.Authorization = `Bearer ${this.cfg.bearerToken}`;
+    const meta = await fetch(`https://boardgamegeek.com/xmlapi2/thing?id=${bggId}`, { headers });
+    if (meta.status === 429) throw new SourceUnavailableError(this.id, "xmlapi rate-limited (429)");
+    if (!meta.ok) throw new Error(`bgg xmlapi ${meta.status}`);
+    const imageUrl = (await meta.text()).match(/<image>([^<]+)<\/image>/)?.[1];
+    if (!imageUrl) throw new Error(`bgg ${bggId}: no <image>`);
 
-/** Highest-resolution variant URL for a grid thumbnail, via the geekdo images API. */
-async function bestVariant(gridUrl: string): Promise<string | null> {
-  const picId = picIdFromUrl(gridUrl);
-  if (!picId) return null;
-  try {
-    const r = await fetch(IMAGES_API(picId), { headers: { "User-Agent": UA } });
-    if (!r.ok) return null;
-    const d = (await r.json()) as { images?: Record<string, { url?: string }> };
-    const imgs = d.images ?? (d as Record<string, { url?: string }>);
-    return imgs.original?.url ?? imgs.large?.url ?? null;
-  } catch {
-    return null;
+    const img = await fetch(imageUrl, { headers: { "User-Agent": UA } });
+    if (!img.ok) throw new Error(`bgg image ${img.status}`);
+    return {
+      bytes: new Uint8Array(await img.arrayBuffer()),
+      contentType: img.headers.get("content-type") ?? "image/jpeg",
+      fingerprint: `bgg:${bggId}`,
+    };
   }
 }

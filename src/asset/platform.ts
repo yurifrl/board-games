@@ -26,7 +26,7 @@ export function buildAssetPlatform(cfg: { dataDir: string } & SourcesConfig): As
   const service = new AssetService(origin, cache, buildRenderers());
   return {
     service,
-    sources: buildSources({ ludopedia: cfg.ludopedia }),
+    sources: buildSources({ bgg: cfg.bgg, ludopedia: cfg.ludopedia }),
     serve: buildAssetRoutes(service),
     ingest: buildIngestRoute(service),
   };
