@@ -18,7 +18,10 @@ import {
   verifySession,
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
-import { collectionPage, invitePage } from "./views.ts";
+import { collectionPage, invitePage } from "./views.tsx";
+import { buildAssetsRoute } from "./assets/route.ts";
+import { AssetStore } from "./assets/store.ts";
+import { GcsStore } from "./assets/gcs.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
@@ -164,6 +167,13 @@ app.get("/auth/logout", (c) => {
 
 app.get("/healthz", (c) => c.json({ ok: true }));
 
+app.get("/styles.css", async (c) => {
+  const f = Bun.file(join(import.meta.dir, "public", "styles.css"));
+  return new Response(f, {
+    headers: { "Content-Type": "text/css", "Cache-Control": "public, max-age=3600" },
+  });
+});
+
 // Serve cached covers from the source-keyed cache (data/covers/<source>-<id>/cover.jpg).
 app.get("/covers/:id", async (c) => {
   const id = c.req.param("id").replace(/[^0-9A-Za-z_-]/g, "");
@@ -173,6 +183,21 @@ app.get("/covers/:id", async (c) => {
     headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
   });
 });
+
+// Assets API: signed, resized images backed by the private GCS bucket.
+if (env("ASSETS_GCS_BUCKET")) {
+  app.route(
+    "/assets",
+    buildAssetsRoute({
+      store: new AssetStore(join(DATA_DIR, "assets")),
+      gcs: new GcsStore(),
+      isFillable: async (id) => {
+        const games = await loadGames(DATA_DIR);
+        return games.some((g) => g.id === id && (!!g.bggId || !!g.ludopediaId));
+      },
+    }),
+  );
+}
 
 console.log(`board-games listening on :${PORT} (base ${BASE_URL}, data ${DATA_DIR})`);
 export default { port: PORT, fetch: app.fetch };

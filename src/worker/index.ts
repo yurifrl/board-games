@@ -13,6 +13,8 @@ import { loadGames, type Game } from "../games.ts";
 import { coverKeyCandidates } from "../covers/keys.ts";
 import { buildCoverResolver } from "../covers/index.ts";
 import type { GameRef } from "../covers/types.ts";
+import { GcsStore } from "../assets/gcs.ts";
+import { uploadOriginals } from "../assets/fill.ts";
 import { defaultObsidianConfig, listNotes, getNote } from "./obsidian.ts";
 import { parseGameNote, parseUsersNote } from "./parse.ts";
 import { writeCatalog, writeUsers, storePaths, type UsersFile } from "../store.ts";
@@ -89,6 +91,13 @@ async function syncCovers(games: Game[]): Promise<void> {
   });
   const summary = Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(" ");
   console.log(`  covers: ${summary}`);
+  await uploadCovers(games);
+}
+
+async function uploadCovers(games: Game[]): Promise<void> {
+  if (!process.env.ASSETS_GCS_BUCKET) return; // GCS not configured (e.g. local dev)
+  const n = await uploadOriginals(games, storePaths(DATA_DIR).covers, new GcsStore());
+  console.log(`  gcs: uploaded=${n}`);
 }
 
 async function cycle(): Promise<void> {

@@ -36,6 +36,14 @@ cache:
 # Provide via 1Password/ExternalSecret named `secretName`.
 secretName: board-games
 
+# ── assets API (image aggregator backed by private GCS) ──────────────────────
+# Set to the GCS bucket name to enable signed /assets URLs + worker uploads to
+# GCS. Empty = disabled: the app serves the legacy /covers FS cache and the
+# worker skips GCS (so local dev and non-GCS deploys work unchanged).
+# The URL signing secret reuses AUTH_SECRET from `secretName`.
+assetsGcsBucket: ""
+gcsSecretName: board-games-gcs-creds
+
 resources:
   requests: { cpu: 50m, memory: 128Mi }
   limits:   { cpu: 500m, memory: 256Mi }

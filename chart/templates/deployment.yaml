@@ -47,9 +47,20 @@ spec:
                   name: {{ .Values.secretName }}
                   key: LUDOPEDIA_COOKIE
                   optional: true
+            {{- if .Values.assetsGcsBucket }}
+            - name: ASSETS_GCS_BUCKET
+              value: {{ .Values.assetsGcsBucket | quote }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/gcp/key.json
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data
+            {{- if .Values.assetsGcsBucket }}
+            - name: gcs-creds
+              mountPath: /var/secrets/gcp
+              readOnly: true
+            {{- end }}
           resources: {{ toYaml .Values.resources | nindent 12 }}
         # The public catalog app. Reads only from the volume.
         - name: app
@@ -70,12 +81,36 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: AUTH_SECRET
+            {{- if .Values.assetsGcsBucket }}
+            - name: ASSETS_GCS_BUCKET
+              value: {{ .Values.assetsGcsBucket | quote }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/gcp/key.json
+            - name: ASSETS_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: AUTH_SECRET
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data
               readOnly: true
+            {{- if .Values.assetsGcsBucket }}
+            - name: gcs-creds
+              mountPath: /var/secrets/gcp
+              readOnly: true
+            {{- end }}
           resources: {{ toYaml .Values.resources | nindent 12 }}
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "board-games.fullname" . }}-data
+        {{- if .Values.assetsGcsBucket }}
+        - name: gcs-creds
+          secret:
+            secretName: {{ .Values.gcsSecretName }}
+            items:
+              - key: private_key
+                path: key.json
+        {{- end }}

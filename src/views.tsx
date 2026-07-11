@@ -1,0 +1,242 @@
+import type { FC, PropsWithChildren } from "hono/jsx";
+import type { Game, GameGroup } from "./games.ts";
+import type { Permission } from "./whitelist.ts";
+import { sign } from "./assets/signing.ts";
+
+// Signed assets URL when GCS is configured; else the legacy FS cover route.
+const coverSrc = (g: Game): string => {
+  if (process.env.ASSETS_GCS_BUCKET) return `/assets/${g.id}?${sign({ id: g.id, w: 400 })}`;
+  return g.hasCover ? `/covers/${g.coverKey ?? ""}` : g.image ?? "";
+};
+
+const canSeeSale = (perm: Permission) => !!perm.canSeePrices || !!perm.admin;
+
+const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <title>{title}</title>
+      <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>{children}</body>
+  </html>
+);
+
+const doc = (el: { toString(): string }): string => "<!doctype html>" + el.toString();
+
+const CoverImg: FC<{ g: Game; cls: string }> = ({ g, cls }) => {
+  const src = coverSrc(g);
+  return src ? (
+    <img class={cls} src={src} alt={g.name} loading="lazy" />
+  ) : (
+    <div class={cls} style="display:grid;place-items:center;font-size:64px">🎲</div>
+  );
+};
+
+const SaleBadge: FC<{ g: Game; perm: Permission }> = ({ g, perm }) =>
+  g.forSale && canSeeSale(perm) ? <span class="tag sale">FOR SALE</span> : null;
+
+const PriceLine: FC<{ g: Game; perm: Permission }> = ({ g, perm }) =>
+  canSeeSale(perm) && (g.salePrice || g.price) ? <div class="price">{g.salePrice ?? g.price}</div> : null;
+
+const waHref = (g: Game, whatsapp: string) =>
+  `https://wa.me/${whatsapp}?text=${encodeURIComponent(`Hi! I'd like to make a bid on "${g.name}". My offer: R$ `)}`;
+
+const BidButton: FC<{ g: Game; perm: Permission; whatsapp: string; cls?: string }> = ({ g, perm, whatsapp, cls = "bid" }) =>
+  g.forSale && perm.canBid ? (
+    <a class={cls} href={waHref(g, whatsapp)} target="_blank" rel="noopener">
+      {cls === "ebid" ? "Bid" : "Make a bid"}
+    </a>
+  ) : null;
+
+const Links: FC<{ g: Game }> = ({ g }) => {
+  if (!g.urlBgg && !g.urlLudopedia) return null;
+  return (
+    <div class="links">
+      {g.urlBgg ? <a href={g.urlBgg} target="_blank" rel="noopener">BGG</a> : null}
+      {g.urlLudopedia ? <a href={g.urlLudopedia} target="_blank" rel="noopener">Ludopedia</a> : null}
+    </div>
+  );
+};
+
+const Tags: FC<{ g: Game }> = ({ g }) => (
+  <>
+    {g.language ? <span class="tag">{g.language}</span> : null}
+    {g.purchaseDate ? <span class="tag">📅 {g.purchaseDate}</span> : null}
+  </>
+);
+
+const ExpansionRow: FC<{ g: Game; perm: Permission; whatsapp: string }> = ({ g, perm, whatsapp }) => (
+  <div class="exp">
+    <span class="ename">+ {g.name}</span>
+    <SaleBadge g={g} perm={perm} />
+    {canSeeSale(perm) && (g.salePrice || g.price) ? <span class="eprice">{g.salePrice ?? g.price}</span> : null}
+    <BidButton g={g} perm={perm} whatsapp={whatsapp} cls="ebid" />
+  </div>
+);
+
+const FeedCard: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ grp, perm, whatsapp }) => {
+  const g = grp.base;
+  return (
+    <section class="card" id={`g-${g.id}`}>
+      <CoverImg g={g} cls="cover" />
+      <div class="shade"></div>
+      <div class="info">
+        <div class="tags">
+          <SaleBadge g={g} perm={perm} />
+          <Tags g={g} />
+        </div>
+        <div class="name">{g.name}</div>
+        <PriceLine g={g} perm={perm} />
+        <Links g={g} />
+        <BidButton g={g} perm={perm} whatsapp={whatsapp} />
+        {grp.expansions.length ? (
+          <div class="exps">
+            {grp.expansions.map((e) => <ExpansionRow g={e} perm={perm} whatsapp={whatsapp} />)}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+};
+
+const GridTile: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
+  const g = grp.base;
+  return (
+    <a class="tile" href={`#g-${g.id}`} onclick="setView('feed')">
+      <CoverImg g={g} cls="timg" />
+      {g.forSale && canSeeSale(perm) ? <span class="tsale">SALE</span> : null}
+      <span class="tname">{g.name}</span>
+    </a>
+  );
+};
+
+const LoginModal: FC<{ error?: string }> = ({ error }) => (
+  <div class="overlay">
+    <form class="modal" method="post" action="/auth/login">
+      <a class="x" href="/" title="Close" aria-label="Close">✕</a>
+      <h2 style="margin:0;font-size:18px">🎲 Sign in</h2>
+      {error ? <p class="note" style="color:#f87171;margin:0">{error}</p> : null}
+      <input type="email" name="email" placeholder="you@example.com" autocomplete="username" required autofocus />
+      <input type="password" name="password" placeholder="Password" autocomplete="current-password" required />
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+  </div>
+);
+
+const InviteForm: FC<{ roles: string[]; defaultRole: string }> = ({ roles, defaultRole }) => (
+  <section class="invite" id="invitePanel">
+    <h2>Invite a temporary user</h2>
+    <form method="post" action="/admin/invite">
+      <input type="email" name="email" placeholder="guest@example.com" required />
+      <select name="role">
+        {roles.map((r) => <option value={r} selected={r === defaultRole}>{r}</option>)}
+      </select>
+      <button class="btn" type="submit">Create link</button>
+    </form>
+  </section>
+);
+
+const VIEW_SCRIPT =
+  "function setView(v){document.body.className=v==='feed'?'view-feed':'';localStorage.setItem('view',v);}if(localStorage.getItem('view')==='feed')setView('feed');";
+
+export function collectionPage(opts: {
+  groups: GameGroup[];
+  totalGames: number;
+  forSaleCount: number;
+  perm: Permission;
+  email: string;
+  whatsapp: string;
+  roles: string[];
+  defaultRole: string;
+  isAuthed: boolean;
+  showAll: boolean;
+  hiddenCount: number;
+  login?: { error?: string };
+}): string {
+  const { groups, totalGames, forSaleCount, perm, email, whatsapp, roles, defaultRole, isAuthed, showAll, hiddenCount, login } = opts;
+  const isTemp = perm.roles.length > 0 && !perm.admin && !perm.name;
+  const subtitle = canSeeSale(perm) ? `${totalGames} games · ${forSaleCount} for sale` : `${totalGames} games`;
+  const showLogin = !!login;
+
+  return doc(
+    <Layout title="Board Game Collection">
+      <div class="topbar">
+        <div>
+          <div class="title">🎲 Collection</div>
+          <div class="sub">{subtitle}</div>
+        </div>
+        <div class="right">
+          <button
+            class="btn"
+            onclick="setView(document.body.classList.contains('view-feed')?'grid':'feed')"
+            title="Toggle grid / feed"
+            aria-label="Toggle view"
+          >
+            ☷
+          </button>
+          {showAll ? (
+            <a class="btn" href="/">🎲 Games</a>
+          ) : hiddenCount > 0 ? (
+            <a class="btn" href="/?show=all">All +{hiddenCount}</a>
+          ) : null}
+          {perm.admin ? (
+            <a
+              class="btn"
+              href="#invitePanel"
+              onclick="document.getElementById('invitePanel').classList.toggle('open');return false"
+            >
+              Invite
+            </a>
+          ) : null}
+          {isAuthed ? (
+            <>
+              <span class="badge">
+                {perm.name ?? email}
+                {perm.roles.length ? " · " + perm.roles.join(", ") : ""}
+                {isTemp ? " · guest" : ""}
+              </span>
+              <a class="btn" href="/auth/logout">Exit</a>
+            </>
+          ) : null}
+        </div>
+      </div>
+      <div class="grid">{groups.map((grp) => <GridTile grp={grp} perm={perm} />)}</div>
+      <div class="feed">{groups.map((grp) => <FeedCard grp={grp} perm={perm} whatsapp={whatsapp} />)}</div>
+      {perm.admin ? <InviteForm roles={roles} defaultRole={defaultRole} /> : null}
+      {!isAuthed && !showLogin ? (
+        <a href="/login" class="lock" title="Sign in" aria-label="Sign in">🔒</a>
+      ) : null}
+      {showLogin ? <LoginModal error={login?.error} /> : null}
+      <script dangerouslySetInnerHTML={{ __html: VIEW_SCRIPT }}></script>
+    </Layout>,
+  );
+}
+
+export function invitePage(opts: { link: string; email: string; role: string }): string {
+  const { link, email, role } = opts;
+  return doc(
+    <Layout title="Invite created">
+      <div class="topbar">
+        <div class="title">Invite created</div>
+        <a class="btn" href="/">← Back</a>
+      </div>
+      <div class="card">
+        <div class="info">
+          <div class="name">Invite created</div>
+          <p class="note">
+            Share with <strong>{email}</strong> (role <strong>{role}</strong>). Does not expire.
+          </p>
+          <input
+            class="note"
+            readonly
+            value={link}
+            onclick="this.select()"
+            style="width:100%;padding:12px;border-radius:8px;border:1px solid #ffffff33;background:#0009;color:#fff"
+          />
+        </div>
+      </div>
+    </Layout>,
+  );
+}
