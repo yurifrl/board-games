@@ -1,3 +1,4 @@
+/** @jsxImportSource hono/jsx */
 import type { FC, PropsWithChildren } from "hono/jsx";
 import type { Game, GameGroup } from "./games.ts";
 import type { Permission } from "./whitelist.ts";
@@ -80,39 +81,64 @@ const ExpansionRow: FC<{ g: Game; perm: Permission; whatsapp: string }> = ({ g, 
   </div>
 );
 
-const FeedCard: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ grp, perm, whatsapp }) => {
+const Info: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ grp, perm, whatsapp }) => {
   const g = grp.base;
   return (
-    <section class="card" id={`g-${g.id}`}>
-      <CoverImg g={g} cls="cover" />
-      <div class="shade"></div>
-      <div class="info">
-        <div class="tags">
-          <SaleBadge g={g} perm={perm} />
-          <Tags g={g} />
-        </div>
-        <div class="name">{g.name}</div>
-        <PriceLine g={g} perm={perm} />
-        <Links g={g} />
-        <BidButton g={g} perm={perm} whatsapp={whatsapp} />
-        {grp.expansions.length ? (
-          <div class="exps">
-            {grp.expansions.map((e) => <ExpansionRow g={e} perm={perm} whatsapp={whatsapp} />)}
-          </div>
-        ) : null}
+    <>
+      <div class="tags">
+        <SaleBadge g={g} perm={perm} />
+        <Tags g={g} />
       </div>
-    </section>
+      <div class="name">{g.name}</div>
+      <PriceLine g={g} perm={perm} />
+      <Links g={g} />
+      <BidButton g={g} perm={perm} whatsapp={whatsapp} />
+      {grp.expansions.length ? (
+        <div class="exps">
+          {grp.expansions.map((e) => <ExpansionRow g={e} perm={perm} whatsapp={whatsapp} />)}
+        </div>
+      ) : null}
+    </>
   );
 };
 
-const GridTile: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
+// Closed 3D box on the shelf. Cover art is the front face; tinted top + right
+// faces give it depth. `--tint` colors the faces and the stage glow; `box--mN`
+// picks one of 4 box proportions (index % 4). Links to the detail overlay.
+const Box: FC<{ grp: GameGroup; perm: Permission; i: number }> = ({ grp, perm, i }) => {
   const g = grp.base;
+  const tint = g.tint ?? "#3a3a44";
   return (
-    <a class="tile" href={`#g-${g.id}`} onclick="setView('feed')">
-      <CoverImg g={g} cls="timg" />
+    <a class={`box box--m${i % 4}`} href={`#g-${g.id}`} style={`--tint:${tint}`}>
+      <span class="stage"></span>
+      <span class="box3d">
+        <span class="face front"><CoverImg g={g} cls="faceimg" /></span>
+        <span class="face side"></span>
+        <span class="face top"></span>
+      </span>
       {g.forSale && canSeeSale(perm) ? <span class="tsale">SALE</span> : null}
-      <span class="tname">{g.name}</span>
+      <span class="box-name">{g.name}</span>
     </a>
+  );
+};
+
+// Full-screen detail, shown via :target when its box is tapped. The box sits
+// behind a translucent panel with its lid lifted off the tray (open animation).
+const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ grp, perm, whatsapp }) => {
+  const g = grp.base;
+  const tint = g.tint ?? "#3a3a44";
+  return (
+    <div class="detail" id={`g-${g.id}`} style={`--tint:${tint}`}>
+      <a class="detail-bg" href="#" aria-label="Close"></a>
+      <div class="obox">
+        <span class="face tray"></span>
+        <span class="face lid"><CoverImg g={g} cls="faceimg" /></span>
+      </div>
+      <div class="panel">
+        <a class="close" href="#" aria-label="Close">✕</a>
+        <Info grp={grp} perm={perm} whatsapp={whatsapp} />
+      </div>
+    </div>
   );
 };
 
@@ -142,9 +168,6 @@ const InviteForm: FC<{ roles: string[]; defaultRole: string }> = ({ roles, defau
   </section>
 );
 
-const VIEW_SCRIPT =
-  "function setView(v){document.body.className=v==='feed'?'view-feed':'';localStorage.setItem('view',v);}if(localStorage.getItem('view')==='feed')setView('feed');";
-
 export function collectionPage(opts: {
   groups: GameGroup[];
   totalGames: number;
@@ -172,14 +195,6 @@ export function collectionPage(opts: {
           <div class="sub">{subtitle}</div>
         </div>
         <div class="right">
-          <button
-            class="btn"
-            onclick="setView(document.body.classList.contains('view-feed')?'grid':'feed')"
-            title="Toggle grid / feed"
-            aria-label="Toggle view"
-          >
-            ☷
-          </button>
           {showAll ? (
             <a class="btn" href="/">🎲 Games</a>
           ) : hiddenCount > 0 ? (
@@ -206,14 +221,13 @@ export function collectionPage(opts: {
           ) : null}
         </div>
       </div>
-      <div class="grid">{groups.map((grp) => <GridTile grp={grp} perm={perm} />)}</div>
-      <div class="feed">{groups.map((grp) => <FeedCard grp={grp} perm={perm} whatsapp={whatsapp} />)}</div>
+      <div class="shelf">{groups.map((grp, i) => <Box grp={grp} perm={perm} i={i} />)}</div>
+      {groups.map((grp) => <Detail grp={grp} perm={perm} whatsapp={whatsapp} />)}
       {perm.admin ? <InviteForm roles={roles} defaultRole={defaultRole} /> : null}
       {!isAuthed && !showLogin ? (
         <a href="/login" class="lock" title="Sign in" aria-label="Sign in">🔒</a>
       ) : null}
       {showLogin ? <LoginModal error={login?.error} /> : null}
-      <script dangerouslySetInnerHTML={{ __html: VIEW_SCRIPT }}></script>
     </Layout>,
   );
 }
