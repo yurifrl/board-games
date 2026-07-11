@@ -10,3 +10,6 @@ data
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# local GCS service-account key for `bun run sync`
+.secrets/
