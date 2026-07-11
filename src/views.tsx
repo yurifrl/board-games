@@ -132,7 +132,9 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
     <div class="detail" id={`g-${g.id}`} style={`--tint:${tint}`}>
       <a class="detail-bg" href="#" aria-label="Close"></a>
       <div class="obox">
-        <span class="face tray"></span>
+        <span class="face tfront"></span>
+        <span class="face side"></span>
+        <span class="face top"></span>
         <span class="face lid"><CoverImg g={g} cls="faceimg" /></span>
       </div>
       <div class="panel">
