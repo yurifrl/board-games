@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AssetKey } from "./key.ts";
 import { variantKey } from "./key.ts";
 import type { AssetBlob, AssetRecord, AssetRenderer, BlobStore } from "./types.ts";
@@ -7,6 +8,10 @@ const identity: AssetRenderer = {
   variantName: () => "original",
   render: async (b) => b,
 };
+
+/** Short content tag so a changed original invalidates its cached derivatives. */
+const tag = (fingerprint?: string): string =>
+  createHash("sha256").update(fingerprint ?? "none").digest("hex").slice(0, 12);
 
 /**
  * Orchestrates the two storage tiers and the renderers. This is the composition
@@ -42,23 +47,28 @@ export class AssetService {
 
   /**
    * Serve `baseKey` (an original) rendered per `params`. Returns null when the
-   * original doesn't exist anywhere. Derivatives are cached on disk.
+   * original doesn't exist anywhere. Derivatives are cached on disk under a key
+   * tagged with the original's fingerprint, so refreshing the original (e.g. a
+   * changed image in Obsidian) invalidates the old resized variants instead of
+   * serving them forever.
    */
   async render(baseKey: AssetKey, params: URLSearchParams): Promise<AssetBlob | null> {
     const renderer = this.renderers.get(baseKey.kind) ?? identity;
     const variant = renderer.variantName(params);
+    if (variant === "original") return this.original(baseKey);
 
-    if (variant !== "original") {
-      const cached = await this.cache.get(variantKey(baseKey, variant));
+    // Cheap fingerprint (disk sidecar / GCS metadata) -> variant cache probe.
+    const head = (await this.cache.head(baseKey)) ?? (await this.origin.head(baseKey));
+    if (head) {
+      const cached = await this.cache.get(variantKey(baseKey, `${variant}-${tag(head.fingerprint)}`));
       if (cached) return cached;
     }
 
     const original = await this.original(baseKey);
     if (!original) return null;
-    if (variant === "original") return original;
-
+    const vk = variantKey(baseKey, `${variant}-${tag(original.fingerprint)}`);
     const out = await renderer.render(original, params);
-    await this.cache.put(variantKey(baseKey, variant), out);
+    await this.cache.put(vk, out);
     return out;
   }
 

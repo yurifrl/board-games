@@ -43,14 +43,26 @@ test("render returns the original when no transform params", async () => {
 });
 
 test("render derives, caches the variant, and reuses the cache", async () => {
-  const { origin, cache, service } = svc();
-  await service.put(base, { bytes: new Uint8Array([5]), contentType: "image/jpeg" });
+  const { cache, service } = svc();
+  await service.put(base, { bytes: new Uint8Array([5]), contentType: "image/jpeg", fingerprint: "fp1" });
   const params = new URLSearchParams("w=300");
   const out = await service.render(base, params);
   expect(out?.bytes).toEqual(new Uint8Array([5, 5])); // doubled
-  // cached under the variant key, not re-derived from origin
-  expect(await cache.get(variantKey(base, "300w"))).not.toBeNull();
-  expect(keyPath(variantKey(base, "300w"))).toBe("g1/cover/bgg/300w.jpg");
+  // cached under a fingerprint-tagged variant key
+  const cachedKeys = await cache.list({ entity: "g1", kind: "cover" });
+  expect(cachedKeys.some((k) => k.variant.startsWith("300w-"))).toBe(true);
+});
+
+test("a changed original invalidates the stale derivative", async () => {
+  const { service } = svc();
+  await service.put(base, { bytes: new Uint8Array([1]), contentType: "image/jpeg", fingerprint: "fp1" });
+  const first = await service.render(base, new URLSearchParams("w=300"));
+  expect(first?.bytes).toEqual(new Uint8Array([1, 1]));
+
+  // image changed in Obsidian -> new fingerprint + new bytes
+  await service.put(base, { bytes: new Uint8Array([2, 2]), contentType: "image/jpeg", fingerprint: "fp2" });
+  const second = await service.render(base, new URLSearchParams("w=300"));
+  expect(second?.bytes).toEqual(new Uint8Array([2, 2, 2, 2])); // fresh, not the stale [1,1]
 });
 
 test("render returns null when the original is missing", async () => {
