@@ -66,7 +66,8 @@ spec:
               readOnly: true
             {{- end }}
           resources: {{ toYaml .Values.resources | nindent 12 }}
-        # The public catalog app. Reads only from the volume.
+        # The public catalog app. Reads the volume; also writes the /assets
+        # variant cache, so the mount is writable.
         - name: app
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -99,7 +100,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-              readOnly: true
             {{- if .Values.assetsGcsBucket }}
             - name: gcs-creds
               mountPath: /var/secrets/gcp
