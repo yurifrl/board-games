@@ -6,13 +6,14 @@ import { sign } from "./asset/auth.ts";
 
 // Signed cover URL: prefer BGG's full-res original, fall back to Ludopedia,
 // else the note's raw image / a placeholder.
+export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400): string {
+  const key = { entity, kind: "cover", source, variant: "original", ext: "jpg" };
+  return `/asset/${entity}/cover/${source}/original.jpg?${sign(key, { w })}`;
+}
+
 const coverSrc = (g: Game): string => {
   const source = g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
-  if (source) {
-    const key = { entity: g.id, kind: "cover", source, variant: "original", ext: "jpg" };
-    return `/asset/${g.id}/cover/${source}/original.jpg?${sign(key, { w: 400 })}`;
-  }
-  return g.image ?? "";
+  return source ? signedCover(g.id, source) : g.image ?? "";
 };
 
 const canSeeSale = (perm: Permission) => !!perm.canSeePrices || !!perm.admin;
@@ -29,7 +30,8 @@ const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) =
   </html>
 );
 
-const doc = (el: { toString(): string }): string => "<!doctype html>" + el.toString();
+export const doc = (el: { toString(): string }): string => "<!doctype html>" + el.toString();
+export { Layout };
 
 const CoverImg: FC<{ g: Game; cls: string }> = ({ g, cls }) => {
   const src = coverSrc(g);
@@ -268,10 +270,14 @@ export function collectionPage(opts: {
           <div class="sub">{subtitle}</div>
         </div>
         <div class="right">
+          <a class="btn" href="/play">🗓 Play</a>
           {showAll ? (
             <a class="btn" href="/">🎲 Games</a>
           ) : hiddenCount > 0 ? (
             <a class="btn" href="/?show=all">All +{hiddenCount}</a>
+          ) : null}
+          {perm.admin ? (
+            <a class="btn" href="/admin/requests">Requests</a>
           ) : null}
           {perm.admin ? (
             <a

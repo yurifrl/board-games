@@ -230,3 +230,52 @@ body::-webkit-scrollbar { display:none; }
 
 .lock { position:fixed; right:18px; bottom: calc(22px + env(safe-area-inset-bottom)); z-index:10; font-size:22px; opacity:.3; text-decoration:none; transition:opacity .2s; }
 .lock:hover { opacity:.9; }
+
+/* ---- Play: schedule of game slots ---- */
+main.play { max-width: 900px; margin: 0 auto; padding: calc(84px + env(safe-area-inset-top)) 18px 40px; }
+main.play.one { max-width: 460px; }
+.play .empty, .play .note { color: var(--muted); }
+.play h2.sec { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 22px 0 10px; }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.slot { background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.slot.big { grid-column: 1 / -1; }
+.slot-cover { aspect-ratio: 3/2; background: #0006; }
+.slot-cover img { width: 100%; height: 100%; object-fit: cover; }
+.open-cover { width:100%; height:100%; display:grid; place-items:center; align-content:center; gap:6px; font-size:44px; color:#fff9; }
+.open-cover span { font-size:13px; color: var(--muted); }
+.slot-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.slot-title { font-size: 17px; font-weight: 700; }
+.slot-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); }
+.slot-count { display: flex; align-items: center; gap: 8px; }
+.spots { font-weight: 600; font-size: 14px; }
+.spots.full { color: #f87171; }
+.tag { font-size: 11px; padding: 3px 9px; border-radius: 99px; background: #ffffff1a; color: var(--muted); }
+.tag.ok { background: #22c55e22; color: #4ade80; }
+.tag.sale { background: var(--sale); color: #04120a; font-weight: 600; }
+.slot .btn { text-align: center; }
+.slot .btn.play { background: var(--accent); }
+.slot .btn.leave { background: #ffffff1a; }
+.slot .btn[disabled] { opacity: .5; }
+form.join { display: flex; flex-direction: column; gap: 8px; }
+form.join input { padding: 10px 12px; border-radius: 8px; border: 1px solid #ffffff33; background: #0009; color: #fff; font-size: 14px; }
+
+/* Phone-request reveal (per slot, via :target) */
+.phoneask { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: #000c; padding: 20px; }
+.phoneask:target { display: grid; }
+.phoneask-inner { position: relative; background: #1a1a24; border: 1px solid #ffffff1a; border-radius: 16px; padding: 26px; width: min(400px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.phoneask-inner .x { position: absolute; top: 14px; right: 16px; color: var(--muted); text-decoration: none; }
+.phoneask-inner h3 { font-size: 18px; }
+.phoneask-inner form { display: flex; flex-direction: column; gap: 10px; }
+.phoneask-inner input { padding: 12px; border-radius: 10px; border: 1px solid #ffffff22; background: #0006; color: #fff; font-size: 15px; }
+
+/* Notice / request-sent */
+.notice { background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+.notice h2 { font-size: 20px; }
+.notice .btn.play { background: var(--accent); text-align: center; }
+
+/* Admin requests */
+.req { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #ffffff0d; border: 1px solid #ffffff14; border-radius: 12px; padding: 14px; margin-bottom: 10px; flex-wrap: wrap; }
+.req-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 200px; }
+.req-actions { display: flex; gap: 8px; }
+.req-actions .btn.play { background: var(--accent); }
+.req-actions .btn.leave { background: #ef444433; color: #fca5a5; }

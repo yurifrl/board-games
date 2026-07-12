@@ -15,12 +15,14 @@ import type { AssetService } from "../asset/service.ts";
 import type { Entity } from "../asset/types.ts";
 import { defaultObsidianConfig, listNotes, getNote } from "./obsidian.ts";
 import { parseGameNote, parseUsersNote } from "./parse.ts";
-import { writeCatalog, writeUsers, type UsersFile } from "../store.ts";
+import { fetchSlots } from "./slots.ts";
+import { writeCatalog, writeUsers, writeSlots, type UsersFile } from "../store.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
 const OBSIDIAN_INVENTORY_FOLDER = env("OBSIDIAN_INVENTORY_FOLDER", "Yuri/Resources/Board Games/Inventory");
 const OBSIDIAN_USERS_NOTE = env("OBSIDIAN_USERS_NOTE", "Yuri/Resources/Board Games/Users.md");
+const GCAL_ICS_URL = env("GCAL_ICS_URL");
 const DATA_DIR = env("DATA_DIR", "./data");
 const SYNC_INTERVAL_MS = Number(env("SYNC_INTERVAL_MS", "300000"));
 const SYNC_ONCE = env("SYNC_ONCE") === "1";
@@ -85,6 +87,17 @@ async function enrichTint(games: Game[], service: AssetService): Promise<void> {
   }
 }
 
+async function syncSlots(games: Game[]): Promise<void> {
+  if (!GCAL_ICS_URL) {
+    console.log("  slots: skipped (GCAL_ICS_URL unset)");
+    return;
+  }
+  const slots = await fetchSlots(GCAL_ICS_URL, games);
+  await writeSlots(DATA_DIR, slots);
+  const open = slots.filter((s) => s.gameOpen).length;
+  console.log(`  slots: ${slots.length} (${open} open)`);
+}
+
 async function cycle(): Promise<void> {
   console.log(`[${new Date().toISOString()}] sync start`);
   try {
@@ -100,6 +113,7 @@ async function cycle(): Promise<void> {
     await syncAssets(games, service, sources);
     await enrichTint(games, service);
     await writeCatalog(DATA_DIR, games);
+    await syncSlots(games);
   } catch (e) {
     console.error(`sync failed: ${(e as Error).message}`);
   }

@@ -4,6 +4,9 @@
  *   <root>/catalog.json     flattened Game array (atomic rewrite)
  *   <root>/users.json       roles config + permanent users
  *   <root>/tmp-users.jsonl  runtime temp users (app writes, worker ignores)
+ *   <root>/slots.json       game slots synced from the calendar (worker writes)
+ *   <root>/signups.jsonl    runtime slot signups (app writes, worker ignores)
+ *   <root>/access-requests.jsonl  runtime phone access requests (app writes)
  *   <root>/assets/          asset cache (covers + rulebooks), see src/asset/
  *
  * All of it lives under one path so a single mounted volume persists everything.
@@ -11,6 +14,7 @@
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Game } from "./games.ts";
+import type { Slot } from "./slots.ts";
 
 export type RoleCapabilities = {
   canSeePrices?: boolean;
@@ -43,6 +47,9 @@ export function storePaths(root: string) {
     catalog: `${root}/catalog.json`,
     users: `${root}/users.json`,
     tmpUsers: `${root}/tmp-users.jsonl`,
+    slots: `${root}/slots.json`,
+    signups: `${root}/signups.jsonl`,
+    accessRequests: `${root}/access-requests.jsonl`,
     root,
   };
 }
@@ -84,5 +91,23 @@ export async function loadUsers(root: string, opts: { force?: boolean } = {}): P
     return data;
   } catch {
     return null;
+  }
+}
+
+let slotsCache: { at: number; slots: Slot[] } | null = null;
+
+export async function writeSlots(root: string, slots: Slot[]): Promise<void> {
+  await writeJsonAtomic(storePaths(root).slots, slots);
+  slotsCache = { at: Date.now(), slots };
+}
+
+export async function loadSlots(root: string, opts: { force?: boolean } = {}): Promise<Slot[]> {
+  if (!opts.force && slotsCache && Date.now() - slotsCache.at < TTL_MS) return slotsCache.slots;
+  try {
+    const slots = JSON.parse(await readFile(storePaths(root).slots, "utf8")) as Slot[];
+    slotsCache = { at: Date.now(), slots };
+    return slots;
+  } catch {
+    return [];
   }
 }

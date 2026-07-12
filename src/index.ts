@@ -13,12 +13,18 @@ import {
 import type { Permission } from "./whitelist.ts";
 import {
   issueInviteToken,
+  issuePassToken,
   issueSessionToken,
   verifyInvite,
+  verifyPass,
   verifySession,
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
 import { collectionPage, invitePage } from "./views.tsx";
+import { playPage, slotPage, requestSentPage, requestsAdminPage } from "./views-play.tsx";
+import { loadUpcomingSlots, getSlotView } from "./slots.ts";
+import { join as joinSlot, leave as leaveSlot, slotsForPhone, isJoined } from "./signups.ts";
+import { request as requestAccess, approve as approveAccess, deny as denyAccess, getRequest, listRequests, normPhone } from "./access.ts";
 import { buildAssetPlatform } from "./asset/platform.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
@@ -71,6 +77,12 @@ async function currentUser(c: Context) {
     const tu = await getTmpUser(TMP_USERS_PATH, claims.email);
     if (!tu) return null; // removed/revoked from the db
     return resolveExplicit(DATA_DIR, claims.email, tu.roles);
+  }
+  // Phone/WhatsApp users: permission resolved from the access-requests store.
+  if (claims.phone) {
+    const req = await getRequest(DATA_DIR, claims.email);
+    if (!req || req.status !== "approved") return null;
+    return resolveExplicit(DATA_DIR, claims.email, [req.role ?? "player"]);
   }
   // Permanent users: re-check the whitelist every request so revocation is immediate.
   return getPermission(DATA_DIR, claims.email);
@@ -161,6 +173,103 @@ app.get("/auth/invite", async (c) => {
 app.get("/auth/logout", (c) => {
   deleteCookie(c, COOKIE, { path: "/" });
   return c.redirect("/");
+});
+
+// ---- Play: schedule + slot signups (phone/WhatsApp access) ----
+
+app.get("/play", async (c) => {
+  const perm = await currentUser(c);
+  const slots = await loadUpcomingSlots(DATA_DIR);
+  const mine = perm ? await slotsForPhone(DATA_DIR, perm.email) : new Set<string>();
+  return c.html(playPage({ slots, authed: !!perm, mine, identity: perm?.name ?? perm?.email }));
+});
+
+app.get("/slot/:id", async (c) => {
+  const perm = await currentUser(c);
+  const slot = await getSlotView(DATA_DIR, c.req.param("id"));
+  if (!slot) return c.notFound();
+  const mine = perm ? await isJoined(DATA_DIR, slot.id, perm.email) : false;
+  return c.html(slotPage({ slot, authed: !!perm, mine }));
+});
+
+app.post("/slot/:id/join", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm) return c.redirect("/play");
+  const slot = await getSlotView(DATA_DIR, c.req.param("id"));
+  if (!slot) return c.notFound();
+  const already = await isJoined(DATA_DIR, slot.id, perm.email);
+  if (!already && slot.spotsLeft > 0) {
+    const form = await c.req.parseBody();
+    const gamePref = String(form["gamePref"] ?? "").trim() || undefined;
+    await joinSlot(DATA_DIR, { slotId: slot.id, phone: perm.email, name: perm.name, gamePref });
+  }
+  return c.redirect("/play");
+});
+
+app.post("/slot/:id/leave", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm) return c.redirect("/play");
+  await leaveSlot(DATA_DIR, c.req.param("id"), perm.email);
+  return c.redirect("/play");
+});
+
+// Public: submit a WhatsApp number to request access. Approved -> log in now.
+app.post("/access/request", async (c) => {
+  const form = await c.req.parseBody();
+  const phone = normPhone(String(form["phone"] ?? ""));
+  const name = String(form["name"] ?? "").trim() || undefined;
+  if (!phone) return c.redirect("/play");
+  const existing = await getRequest(DATA_DIR, phone);
+  if (existing?.status === "approved") {
+    setSessionCookie(c, await issueSessionToken(SECRET, phone, SESSION_TTL_DAYS * 86400, { phone: true }));
+    return c.redirect("/play");
+  }
+  await requestAccess(DATA_DIR, { phone, name });
+  return c.html(requestSentPage({ phone, ownerWa: WHATSAPP, approved: false }));
+});
+
+// Redeem a phone pass link (owner-shared) -> phone session, if still approved.
+app.get("/auth/pass", async (c) => {
+  const token = c.req.query("token") ?? "";
+  const pass = await verifyPass(SECRET, token);
+  if (!pass) return c.redirect("/play");
+  const req = await getRequest(DATA_DIR, pass.phone);
+  if (!req || req.status !== "approved") return c.redirect("/play");
+  setSessionCookie(c, await issueSessionToken(SECRET, pass.phone, SESSION_TTL_DAYS * 86400, { phone: true }));
+  return c.redirect("/play");
+});
+
+// Admin: review access requests, approve/deny, get pass links.
+app.get("/admin/requests", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm?.admin) return c.text("Forbidden", 403);
+  const requests = await listRequests(DATA_DIR);
+  const passLinks: Record<string, string> = {};
+  for (const r of requests) {
+    if (r.status === "approved") {
+      const token = await issuePassToken(SECRET, r.phone);
+      passLinks[r.phone] = `${BASE_URL}/auth/pass?token=${encodeURIComponent(token)}`;
+    }
+  }
+  return c.html(requestsAdminPage({ requests, baseUrl: BASE_URL, passLinks }));
+});
+
+app.post("/admin/requests/approve", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm?.admin) return c.text("Forbidden", 403);
+  const form = await c.req.parseBody();
+  const phone = normPhone(String(form["phone"] ?? ""));
+  if (phone) await approveAccess(DATA_DIR, phone);
+  return c.redirect("/admin/requests");
+});
+
+app.post("/admin/requests/deny", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm?.admin) return c.text("Forbidden", 403);
+  const form = await c.req.parseBody();
+  const phone = normPhone(String(form["phone"] ?? ""));
+  if (phone) await denyAccess(DATA_DIR, phone);
+  return c.redirect("/admin/requests");
 });
 
 app.get("/healthz", (c) => c.json({ ok: true }));
