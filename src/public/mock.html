@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Shelf mock</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow-x: hidden; max-width: 100%;
+    font-family: system-ui, -apple-system, sans-serif; color: #fff;
+    background: linear-gradient(180deg, #241d18 0%, #191410 55%, #100c09 100%) fixed; }
+  body::-webkit-scrollbar { display: none; }
+
+  @property --ry { syntax: "<angle>"; inherits: true; initial-value: -26deg; }
+
+  .topbar { position: fixed; inset: 0 0 auto 0; z-index: 10; padding: 16px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(#000c, transparent); }
+  .topbar b { font-size: 17px; } .topbar span { font-size: 12px; color: #ffffffa0; }
+
+  /* ---- Shelf: boxes stand on wooden planks ---- */
+  .shelf {
+    --colgap: 64px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 240px);
+    grid-auto-rows: max-content;   /* tall covers -> tall boxes (high limit) */
+    justify-content: center;
+    align-items: end;
+    column-gap: var(--colgap);
+    row-gap: 92px;
+    padding: 78px 46px 64px;
+  }
+
+  .box {
+    position: relative; display: block; width: 240px; aspect-ratio: 3/4;
+    text-decoration: none; cursor: pointer; --tint: #3a3a44; --d: 42px;
+    perspective: 1000px;   /* per-box: each box foreshortens correctly */
+  }
+  /* wooden plank under the box, bridging the column gap into a continuous shelf */
+  .box::after {
+    content: ""; position: absolute; z-index: 0;
+    left: calc(-1 * var(--colgap) / 2 - 2px); right: calc(-1 * var(--colgap) / 2 - 2px);
+    bottom: -18px; height: 26px;
+    background: linear-gradient(180deg, #8a6c50 0, #6f5640 20%, #4a3728 32%, #2a1e15 88%, #170f0a 100%);
+    box-shadow: 0 16px 22px -8px #000b;
+  }
+  .stage { position: absolute; left: 50%; bottom: -4%; width: 82%; height: 12%;
+    transform: translateX(-50%); border-radius: 50%; z-index: 0;
+    background: radial-gradient(ellipse at center, #000 0%, transparent 72%); filter: blur(10px); opacity: .7; }
+  .box3d { position: absolute; inset: 0; z-index: 1; transform-style: preserve-3d;
+    transform: rotateX(6deg) rotateY(var(--ry)); transition: transform .35s ease; }
+  .box:hover .box3d { transform: rotateX(6deg) rotateY(-20deg); }  /* box turns; name stays put */
+
+  .face { position: absolute; backface-visibility: hidden; }
+  .side, .top { backface-visibility: visible; }
+  .front { inset: 0; overflow: hidden; border-radius: 2px; background: #111; box-shadow: inset 0 0 0 1px #ffffff26; }
+  .front img { width: 100%; height: 100%; object-fit: fill; display: block; }  /* no crop: box == cover aspect */
+  .side { top: 0; right: 0; width: var(--d); height: 100%;
+    transform-origin: right center; transform: rotateY(-90deg);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--tint) 44%, #000), color-mix(in srgb, var(--tint) 68%, #000));
+    box-shadow: inset -1px 0 0 #fff5; }
+  .top { left: 0; top: 0; width: 100%; height: var(--d);
+    transform-origin: top center; transform: rotateX(-90deg);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 72%, #000), color-mix(in srgb, var(--tint) 88%, #fff));
+    box-shadow: inset 0 -1px 0 #fff6; }
+
+  .name { position: absolute; left: 50%; bottom: -12px; z-index: 2; transform: translate(-50%, 100%);
+    max-width: 98%; padding: 3px 11px; border-radius: 4px;
+    background: linear-gradient(180deg, #f6ecd8, #e3d2b2); color: #2a2018;
+    font-size: 11px; font-weight: 700; letter-spacing: .2px; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 2px 5px #0008, inset 0 1px 0 #fff8; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .box3d { animation: tilt linear both; animation-timeline: view(); animation-range: entry exit; }
+      @keyframes tilt { from { --ry: -32deg; } to { --ry: -18deg; } }
+    }
+  }
+
+  /* ---- Game hub: full-screen, blurred cover bg, multi-page tabs ---- */
+  .detail { position: fixed; inset: 0; z-index: 30; display: none; }
+  .detail.open { display: block; }
+  .detail-bg { position: absolute; inset: 0; background-size: cover; background-position: center;
+    filter: blur(40px) brightness(.34) saturate(1.2); transform: scale(1.25); }
+  .hub { position: absolute; inset: 0; z-index: 2; overflow-y: auto; overflow-x: hidden;
+    background: linear-gradient(180deg, rgba(12,10,16,.55), rgba(6,4,10,.92));
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: fade .28s ease both; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .hub-inner { width: 100%; max-width: 780px; margin: 0 auto; padding: 40px 22px calc(60px + env(safe-area-inset-bottom)); }
+  .close { position: fixed; top: 14px; right: 16px; z-index: 6; font-size: 20px; width: 40px; height: 40px;
+    display: grid; place-items: center; border-radius: 50%; background: #0008; color: #fff; text-decoration: none; }
+
+  .hub-head { display: flex; gap: 18px; align-items: flex-start; }
+  .hub-head > div { min-width: 0; }
+  .hub-head .cover { width: 128px; flex: none; border-radius: 6px; box-shadow: 0 14px 40px #000a;
+    aspect-ratio: 3/4; object-fit: cover; animation: pop .4s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes pop { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+  .hub-head h1 { font-size: 26px; line-height: 1.1; margin-bottom: 8px; }
+  .hub-head .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tag { font-size: 11px; padding: 3px 9px; border-radius: 99px; background: #ffffff22; }
+  .hub-head .links { display: flex; gap: 14px; font-size: 13px; }
+  .hub-head .links a { color: #fff; opacity: .8; }
+
+  .tabs { position: sticky; top: 0; z-index: 4; display: flex; gap: 4px; overflow-x: auto;
+    margin: 22px -22px 0; padding: 10px 22px; background: linear-gradient(#000b, #0007);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; border: 0; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600;
+    color: #fff; opacity: .55; background: transparent; padding: 8px 12px; border-radius: 8px; white-space: nowrap; }
+  .tabs button.active { opacity: 1; background: #ffffff1e; }
+  .pane { display: none; padding-top: 22px; animation: fade .2s ease both; }
+  .pane.active { display: block; }
+  .pane h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: #ffffff9c; margin: 22px 0 10px; }
+  .pane p { color: #ffffffcc; font-size: 14px; line-height: 1.55; margin-bottom: 10px; }
+  .lead { font-size: 16px !important; color: #fff !important; }
+  .card { background: #ffffff10; border: 1px solid #ffffff16; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px,1fr)); gap: 10px; margin: 4px 0 8px; }
+  .facts .f { background: #ffffff10; border-radius: 10px; padding: 10px 12px; }
+  .facts .f b { display: block; font-size: 18px; }
+  .facts .f span { font-size: 10px; color: #ffffff8c; text-transform: uppercase; letter-spacing: .4px; }
+
+  .ladder { list-style: none; counter-reset: step; }
+  .ladder > li { position: relative; padding: 0 0 22px 46px; }
+  .ladder > li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0;
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+    background: color-mix(in srgb, var(--tint) 72%, #000); box-shadow: 0 0 0 3px #0007; }
+  .ladder > li::after { content: ""; position: absolute; left: 14px; top: 32px; bottom: 0; width: 2px; background: #ffffff1c; }
+  .ladder > li:last-child::after { display: none; }
+  .ladder .st { font-weight: 700; font-size: 15px; }
+  .ladder .goal { font-size: 12px; color: color-mix(in srgb, var(--tint) 55%, #fff); margin: 2px 0 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: 11px; padding: 3px 9px; border-radius: 6px; background: #ffffff14; }
+
+  .remember .card > b { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: .5px;
+    text-transform: uppercase; color: color-mix(in srgb, var(--tint) 50%, #fff); }
+  .remember ul { margin-left: 18px; }
+  .remember li { font-size: 14px; line-height: 1.5; color: #ffffffd2; margin-bottom: 4px; }
+
+  .man { display: flex; align-items: center; gap: 12px; }
+  .man .ic { font-size: 24px; }
+  .man .meta { flex: 1; }
+  .man .meta b { font-size: 14px; }
+  .man .meta span { display: block; font-size: 11px; color: #ffffff8c; }
+  .man a.dl { font-size: 12px; padding: 6px 12px; border-radius: 8px; background: #ffffff1e; color: #fff; text-decoration: none; }
+
+  .notes { font-size: 14px; line-height: 1.6; color: #ffffffcc; }
+  .notes h3 { font-size: 15px; margin: 16px 0 6px; }
+  .notes .tagline { color: #ffffff77; font-size: 12px; margin-bottom: 12px; }
+  .notes ul { margin-left: 18px; margin-bottom: 10px; }
+
+  .chat { display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; }
+  .msg.you { align-self: flex-end; background: color-mix(in srgb, var(--tint) 42%, #222); border-bottom-right-radius: 4px; }
+  .msg.ai { align-self: flex-start; background: #ffffff16; border-bottom-left-radius: 4px; }
+  .msg .src { display: block; margin-top: 6px; font-size: 11px; color: #ffffff88; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .suggest button { font: inherit; font-size: 12px; cursor: pointer; color: #fff; background: #ffffff12;
+    border: 1px solid #ffffff22; border-radius: 99px; padding: 7px 12px; }
+  .ask { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 12px 0 4px; background: linear-gradient(transparent, #0a0710 34%); }
+  .ask input { flex: 1; padding: 12px 14px; border-radius: 12px; border: 1px solid #ffffff26; background: #0009; color: #fff; font: inherit; }
+  .ask button { padding: 0 16px; border-radius: 12px; border: 0; background: color-mix(in srgb, var(--tint) 62%, #000); color: #fff; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+  <div class="topbar"><div><b>🎲 Collection</b><br><span>mock — 16 games</span></div></div>
+  <div class="shelf" id="shelf"></div>
+
+  <div class="detail" id="detail">
+    <div class="detail-bg" id="detailBg"></div>
+    <a class="close" id="close" href="javascript:void 0">✕</a>
+    <div class="hub">
+      <div class="hub-inner">
+        <div class="hub-head">
+          <img class="cover" id="hubCover" alt="" />
+          <div>
+            <h1 id="hubTitle"></h1>
+            <div class="tags"><span class="tag">🎲 2–4</span><span class="tag">⏱ 45 min</span><span class="tag">🎯 Medium (2.8)</span><span class="tag">🔞 12+</span><span class="tag">en · pt-br</span></div>
+            <div class="links"><a href="javascript:void 0">BGG</a><a href="javascript:void 0">Ludopedia</a></div>
+          </div>
+        </div>
+
+        <div class="tabs" id="tabs">
+          <button data-t="overview" class="active">Overview</button>
+          <button data-t="hero">0 → Hero</button>
+          <button data-t="cheat">Cheat Sheet</button>
+          <button data-t="manuals">Manuals</button>
+          <button data-t="notes">Notes</button>
+          <button data-t="ask">Ask AI</button>
+        </div>
+
+        <section class="pane active" data-p="overview">
+          <div class="facts">
+            <div class="f"><b>2–4</b><span>Players</span></div>
+            <div class="f"><b>45m</b><span>Playtime</span></div>
+            <div class="f"><b>2.8</b><span>Weight</span></div>
+            <div class="f"><b>12+</b><span>Age</span></div>
+            <div class="f"><b>2023</b><span>Year</span></div>
+          </div>
+          <p class="lead">Race to build the most valuable engine before the deck runs out — every card you take is a card you deny your rivals.</p>
+          <h2>The gist</h2>
+          <p>A tight tableau-builder about tempo and denial. On your turn you draft, place, and trigger combos; the tension is that the best card for you is usually the best card for someone else too. Games are short, decisions are sharp, and the winner is often decided by who read the endgame first.</p>
+          <h2>Why people like it</h2>
+          <p>Fast to teach, hard to master, and it fits in the gap between a filler and a main course. Little downtime, lots of "just one more round."</p>
+        </section>
+
+        <section class="pane" data-p="hero">
+          <p>A guided path from never-seen-it to teaching it at the table. Each step has a goal — clear the step when you can do the goal without looking.</p>
+          <ol class="ladder">
+            <li><div class="st">What are we even doing?</div><div class="goal">Goal: say the theme + win condition in one breath</div><p>You're rival engine-builders. Most points when the deck empties wins. Everything else is detail.</p><div class="chips"><span class="chip">engine</span><span class="chip">win = most VP</span></div></li>
+            <li><div class="st">Setup</div><div class="goal">Goal: get the table ready from memory</div><p>Shuffle the main deck, deal 5 to each player, seed the 4-card market, give each player a starting tile. First player is whoever last cooked dinner.</p><div class="chips"><span class="chip">5 cards</span><span class="chip">4-card market</span><span class="chip">start tile</span></div></li>
+            <li><div class="st">Your turn (the core loop)</div><div class="goal">Goal: list your turn options without prompting</div><p>Do two of three: <b>Draft</b> a card from the market, <b>Build</b> a card from hand (pay its cost), or <b>Activate</b> a row to collect resources. Refill the market at end of turn.</p><div class="chips"><span class="chip">draft</span><span class="chip">build</span><span class="chip">activate</span><span class="chip">2 of 3</span></div></li>
+            <li><div class="st">Scoring</div><div class="goal">Goal: know where every point comes from</div><p>VP come from built cards, completed sets (color majorities), and leftover resources at 3:1. Bonus tiles reward the longest chain.</p><div class="chips"><span class="chip">built cards</span><span class="chip">set majorities</span><span class="chip">chain bonus</span></div></li>
+            <li><div class="st">Play it well</div><div class="goal">Goal: make choices on purpose, not by default</div><p>Tempo beats greed early. Deny the card that completes an opponent's set even if it's dead in your hand. Count the deck — when ~8 cards remain, stop building and start cashing out.</p><div class="chips"><span class="chip">tempo</span><span class="chip">denial</span><span class="chip">count the deck</span></div></li>
+            <li><div class="st">Teach it back</div><div class="goal">Goal: explain the whole game in 3 minutes</div><p>If you can walk a new player through theme → turn → scoring → "one tip" without notes, you're a hero. Use the Cheat Sheet as your teaching script.</p><div class="chips"><span class="chip">theme</span><span class="chip">turn</span><span class="chip">scoring</span><span class="chip">one tip</span></div></li>
+          </ol>
+        </section>
+
+        <section class="pane remember" data-p="cheat">
+          <p>Everything you keep forgetting mid-game, in one place. Glance here, don't dig through the rulebook.</p>
+          <div class="card"><b>Before you start</b><ul><li>Deal 5 cards each, seed the 4-card market.</li><li>Everyone takes exactly one starting tile.</li><li>Agree on the tiebreaker: fewest cards built wins ties.</li></ul></div>
+          <div class="card"><b>Every turn (in order)</b><ul><li>Do <b>two of three</b>: Draft / Build / Activate.</li><li>You may repeat the same action twice.</li><li>Refill the market to 4 before passing.</li></ul></div>
+          <div class="card"><b>Easy to forget</b><ul><li>Building costs resources <em>and</em> discards the card from hand.</li><li>Activating a row activates the <em>whole</em> row, left to right.</li><li>Hand limit is 7 at end of turn — discard down.</li></ul></div>
+          <div class="card"><b>Endgame trigger</b><ul><li>Game ends when the main deck can't refill the market.</li><li>Finish the current round so everyone has equal turns.</li><li>Then score: cards → sets → chain bonus → 3:1 resources.</li></ul></div>
+        </section>
+
+        <section class="pane" data-p="manuals">
+          <p>Downloaded manuals and references for this game.</p>
+          <div class="card man"><span class="ic">📕</span><div class="meta"><b>Official Rulebook</b><span>EN · 24 pages · 4.2 MB · PDF</span></div><a class="dl" href="javascript:void 0">Open</a></div>
+          <div class="card man"><span class="ic">📗</span><div class="meta"><b>Regras Oficiais</b><span>PT-BR · 24 páginas · 4.5 MB · PDF</span></div><a class="dl" href="javascript:void 0">Abrir</a></div>
+          <div class="card man"><span class="ic">📄</span><div class="meta"><b>Quick Reference (2 pages)</b><span>EN · 380 KB · PDF</span></div><a class="dl" href="javascript:void 0">Open</a></div>
+          <div class="card man"><span class="ic">❓</span><div class="meta"><b>FAQ &amp; Errata</b><span>EN · community · updated 2024 · PDF</span></div><a class="dl" href="javascript:void 0">Open</a></div>
+        </section>
+
+        <section class="pane" data-p="notes">
+          <div class="notes">
+            <div class="tagline">From your Obsidian vault · Board Games/Inventory</div>
+            <h3>House rules</h3>
+            <ul><li>Draft market refills face-up (we hate the surprise).</li><li>4-player games: start with 6 cards, not 5 — smooths the opening.</li></ul>
+            <h3>My takeaways</h3>
+            <ul><li>Won twice by hoarding the blue set — nobody contests blue.</li><li>Don't over-activate early; you flood on resources you can't spend.</li></ul>
+            <h3>Table notes</h3>
+            <p>Great with the Caldeirão group. Plays best at 3. Ana always goes for chain bonus — deny her the long row.</p>
+          </div>
+        </section>
+
+        <section class="pane" data-p="ask">
+          <p>Ask anything about the rules — grounded on the manuals and your notes above.</p>
+          <div class="suggest" id="suggest">
+            <button>Can I build and activate the same card in one turn?</button>
+            <button>How exactly does the chain bonus score?</button>
+            <button>What triggers the end of the game?</button>
+          </div>
+          <div class="chat" id="chat">
+            <div class="msg ai">Hi! I've read the rulebook, the quick reference, and your notes for this game. Ask me anything — I'll point you to the rule.</div>
+          </div>
+          <form class="ask" id="ask">
+            <input id="askInput" placeholder="Ask about a rule…" autocomplete="off" />
+            <button type="submit">Ask</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GAMES = [
+      {"url":"/asset/66c1a8da-0842-41ec-b0cf-5fbcc609a3b8/cover/bgg/original.jpg?w=400&sig=e41aded9c223fe9135d6ddd32077b1030260a864ef6c043b307b821c51421958","name":"Hot Streak"},
+      {"url":"/asset/cd43af0a-a58c-4db0-93b7-15dfbbbebb16/cover/bgg/original.jpg?w=400&sig=00f4d9bde987d4909d9bac4f54b06c5d784416def97cb3ed436e14cdae6e31ac","name":"Tenby"},
+      {"url":"/asset/cf8a9989-d217-4400-aff9-694a460f36c6/cover/bgg/original.jpg?w=400&sig=9a7410e3953cc82e26b31905ed22c80e28eb7e855b281c45e1136bbc34004713","name":"Barbecubes"},
+      {"url":"/asset/6b064ca1-e80e-4236-a7da-d850b66a5bc9/cover/bgg/original.jpg?w=400&sig=80767a4a41743c93f77b182e1da5c748b61bab53c2ff745b0f7582ed56fa6744","name":"O Gato e a Torre"},
+      {"url":"/asset/66979887-43f3-45b1-905f-b915795e6ea2/cover/bgg/original.jpg?w=400&sig=9b61266b95a8382aee3f52020a16a4e4cb252526c0f4790778ce6f8ec6913e44","name":"Middle Ages"},
+      {"url":"/asset/38dc86e4-cdd8-4663-9dab-ce9279f65450/cover/bgg/original.jpg?w=400&sig=fc920fc1f764fe0953d43127dd5e9d0094c85c0d6356401fa0ca5238b490e9a8","name":"Trickerion: Collector's Edition"},
+      {"url":"/asset/b65d2ad6-2e99-4f82-8a31-da1f830548d3/cover/bgg/original.jpg?w=400&sig=496246b52e3061798241980fad53c7fdd8d3f185eb85f79eb47a636dc901ea09","name":"Castles of Mad King Ludwig"},
+      {"url":"/asset/ddc70b6b-d13b-4a93-a11b-605548dd0501/cover/bgg/original.jpg?w=400&sig=09514eafad842f9cd395a0407362ac46b40f70a70ff36fdae589a523602b9ebf","name":"Hegemony"},
+      {"url":"/asset/dea6a23f-9ece-41eb-bc60-dabaca19ec04/cover/bgg/original.jpg?w=400&sig=69f91d7529ae9b022551402f37a776e446f0ad5bf53e712a6d2032eef128a6fa","name":"Brass: Birmingham"},
+      {"url":"/asset/ed105238-beb3-4a1d-b067-0d638c4ce904/cover/bgg/original.jpg?w=400&sig=e09ce7c751b30702c6a8092dac55109970133a9f96eae8360f80b65e019cee67","name":"Magnate: The First City"},
+      {"url":"/asset/2e205a54-e3c3-4ab1-9cb2-c56909a5b4a0/cover/bgg/original.jpg?w=400&sig=81b7c4f24f7168b6aa23dc25cc86c0f093ac1e1b8d7940626890d3c1857de964","name":"Cat in the Box"},
+      {"url":"/asset/5e35dd00-d0e8-4806-a203-ad79250818a2/cover/bgg/original.jpg?w=400&sig=460f29f6aa921c114845c124428b22c4baf3908ce8357915f581ead87b9319fd","name":"Food Chain Magnate"},
+      {"url":"/asset/fc90c97a-e810-4d76-a622-b0e0357699f0/cover/bgg/original.jpg?w=400&sig=e486d76f99c2d0a12304378212930149e73a4adc05323ec040607e392d42753d","name":"Joyride"},
+      {"url":"/asset/f0af4591-ad39-4b7b-9121-ded1bcb3c197/cover/bgg/original.jpg?w=400&sig=778c0f1c326a81971e83e9df0dd12985412bf0389017b8e0c0a04e5893658cd9","name":"Rebirth"},
+      {"url":"/asset/4777b103-795f-423d-878a-3812368214d3/cover/bgg/original.jpg?w=400&sig=d103e7bfe33f31bc9a663db3aee28656c480abbe9a65ef092a189c062e4e3e4a","name":"The Gang"},
+      {"url":"/asset/eae7502c-71ad-4183-9b94-08f4f076ffce/cover/bgg/original.jpg?w=400&sig=74caa830aecab2da8475b3f3b0081336fc9e8188247d69a34d62700b590cc8ee","name":"Thunder Road: Vendetta"}
+    ];
+
+    const shelf = document.getElementById("shelf");
+    const detail = document.getElementById("detail");
+    const detailBg = document.getElementById("detailBg");
+    const hubCover = document.getElementById("hubCover");
+    const hubTitle = document.getElementById("hubTitle");
+
+    for (const g of GAMES) {
+      const a = document.createElement("a");
+      a.className = "box";
+      a.href = "javascript:void 0";
+      a.innerHTML =
+        '<span class="stage"></span>' +
+        '<span class="box3d">' +
+          '<span class="face front"><img crossorigin="anonymous" src="' + g.url + '"></span>' +
+          '<span class="face side"></span>' +
+          '<span class="face top"></span>' +
+        '</span>' +
+        '<span class="name">' + g.name + '</span>';
+      const img = a.querySelector("img");
+      img.addEventListener("load", () => {
+        if (img.naturalWidth) a.style.aspectRatio = img.naturalWidth + "/" + img.naturalHeight;
+        try {
+          const c = document.createElement("canvas"); c.width = c.height = 1;
+          const ctx = c.getContext("2d"); ctx.drawImage(img, 0, 0, 1, 1);
+          const d = ctx.getImageData(0, 0, 1, 1).data;
+          a.style.setProperty("--tint", "rgb(" + d[0] + "," + d[1] + "," + d[2] + ")");
+        } catch (e) {}
+      });
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        detailBg.style.backgroundImage = 'url("' + g.url + '")';
+        hubCover.src = g.url;
+        hubTitle.textContent = g.name;
+        detail.style.setProperty("--tint", a.style.getPropertyValue("--tint") || "#3a3a44");
+        selectTab("overview");
+        detail.classList.add("open");
+        detail.querySelector(".hub").scrollTop = 0;
+      });
+      shelf.appendChild(a);
+    }
+
+    const closeDetail = () => detail.classList.remove("open");
+    document.getElementById("close").addEventListener("click", closeDetail);
+    detailBg.addEventListener("click", closeDetail);
+
+    // Tabs: show one pane at a time.
+    const tabs = document.getElementById("tabs");
+    function selectTab(name) {
+      for (const b of tabs.children) b.classList.toggle("active", b.dataset.t === name);
+      for (const p of detail.querySelectorAll(".pane")) p.classList.toggle("active", p.dataset.p === name);
+    }
+    tabs.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b) selectTab(b.dataset.t);
+    });
+
+    // Mock AI chat: echo a canned, sourced answer. Real answers come later.
+    const chat = document.getElementById("chat");
+    const CANNED = {
+      "Can I build and activate the same card in one turn?":
+        "Yes — Build then Activate counts as your two actions. The card is built first, then it activates with its row the same turn.|Rulebook p.7, “Action timing”",
+      "How exactly does the chain bonus score?":
+        "The longest unbroken row of same-colour cards scores 1 VP per card in it; only the single longest chain counts.|Rulebook p.11 + your note “deny Ana the long row”",
+      "What triggers the end of the game?":
+        "The game ends the moment the main deck can’t refill the market to 4. You finish the round so everyone has equal turns, then score.|Quick Reference, “Game end”",
+    };
+    function say(text, cls, src) {
+      const m = document.createElement("div");
+      m.className = "msg " + cls;
+      m.textContent = text;
+      if (src) { const s = document.createElement("span"); s.className = "src"; s.textContent = "📖 " + src; m.appendChild(s); }
+      chat.appendChild(m);
+      m.scrollIntoView({ block: "nearest" });
+    }
+    function ask(q) {
+      say(q, "you");
+      const a = CANNED[q] || "(mock) I’d answer from the rulebook here — wire me to a real model and I’ll cite the exact page.|mock";
+      const [body, src] = a.split("|");
+      setTimeout(() => say(body, "ai", src), 300);
+    }
+    document.getElementById("suggest").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b) ask(b.textContent);
+    });
+    document.getElementById("ask").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const inp = document.getElementById("askInput");
+      const q = inp.value.trim();
+      if (q) { ask(q); inp.value = ""; }
+    });
+
+    // Screenshot helper: /mock.html?open=8&tab=hero opens that game/tab on load.
+    const params = new URLSearchParams(location.search);
+    const op = params.get("open");
+    if (op !== null) {
+      shelf.querySelectorAll(".box")[+op || 0].click();
+      const t = params.get("tab");
+      if (t) selectTab(t);
+    }
+  </script>
+</body>
+</html>

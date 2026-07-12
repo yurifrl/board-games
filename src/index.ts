@@ -172,6 +172,11 @@ app.get("/styles.css", async (c) => {
   });
 });
 
+app.get("/mock.html", async () => {
+  const f = Bun.file(join(import.meta.dir, "public", "mock.html"));
+  return new Response(f, { headers: { "Content-Type": "text/html" } });
+});
+
 // Assets: covers (pulled from BGG/Ludopedia) + rulebooks (pushed by agents).
 // Browser reads via signed URLs; agents read + ingest via the shared token.
 const assets = buildAssetPlatform({
