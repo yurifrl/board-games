@@ -25,6 +25,19 @@ function str(v: unknown): string | undefined {
   return undefined;
 }
 
+function positiveNumber(v: unknown): number | undefined {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function siteSize(v: unknown): Game["siteSize"] {
+  const match = str(v)?.trim().match(/^(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*cm)?$/i);
+  if (!match) return undefined;
+  const widthCm = positiveNumber(match[1].replace(",", "."));
+  const heightCm = positiveNumber(match[2].replace(",", "."));
+  return widthCm && heightCm ? { widthCm, heightCm } : undefined;
+}
+
 /** Parse a note's markdown frontmatter + body into a Game, or null. */
 export function parseGameNote(raw: string): Game | null {
   const { fm, body } = parseFrontmatter(raw);
@@ -78,6 +91,7 @@ function mapGame(fm: Record<string, unknown>, body: string): Game | null {
   return {
     id,
     name,
+    slug: str(fm["slug"]),
     language: str(fm["language"]),
     type: str(fm["type"]),
     expansionOf: str(fm["expansion-of"]),
@@ -85,6 +99,9 @@ function mapGame(fm: Record<string, unknown>, body: string): Game | null {
     purchaseSource: str(fm["purchase/source"]),
     purchaseDate: str(fm["purchase/date"]),
     tags,
+    playTime: positiveNumber(fm["play_time"] ?? fm["play-time"]),
+    played: typeof fm["played"] === "boolean" ? fm["played"] : undefined,
+    siteSize: siteSize(fm["site/size"]),
     isGame: !tags.some((t) => NON_GAME_TAGS.has(String(t).toLowerCase())),
     purchasedAt: parsePurchaseDate(str(fm["purchase/date"])),
     urlBgg: str(fm["bgg/url"]) ?? str(fm["url/bgg"]),

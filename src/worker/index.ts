@@ -16,7 +16,8 @@ import type { Entity } from "../asset/types.ts";
 import { defaultObsidianConfig, listNotes, getNote } from "./obsidian.ts";
 import { parseGameNote, parseUsersNote } from "./parse.ts";
 import { fetchSlots } from "./slots.ts";
-import { writeCatalog, writeUsers, writeSlots, type UsersFile } from "../store.ts";
+import { enrichProviderData } from "./provider-data.ts";
+import { writeCatalog, writeUsers, writeSlots, loadCatalog, type UsersFile } from "../store.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
@@ -92,7 +93,10 @@ async function syncSlots(games: Game[]): Promise<void> {
     console.log("  slots: skipped (GCAL_ICS_URL unset)");
     return;
   }
-  const slots = await fetchSlots(GCAL_ICS_URL, games);
+  // Fall back to the last-synced catalog when this cycle's catalog step failed,
+  // so game titles still resolve to covers.
+  const catalog = games.length ? games : await loadCatalog(DATA_DIR);
+  const slots = await fetchSlots(GCAL_ICS_URL, catalog);
   await writeSlots(DATA_DIR, slots);
   const open = slots.filter((s) => s.gameOpen).length;
   console.log(`  slots: ${slots.length} (${open} open)`);
@@ -100,23 +104,43 @@ async function syncSlots(games: Game[]): Promise<void> {
 
 async function cycle(): Promise<void> {
   console.log(`[${new Date().toISOString()}] sync start`);
-  try {
-    const { service, sources } = buildAssetPlatform({
-      dataDir: DATA_DIR,
-      bgg: { bearerToken: env("BGG_BEARER_TOKEN") },
-      ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
-    });
-    const games = await syncCatalog();
+  const step = async (name: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (e) {
+      console.error(`  ${name} failed: ${(e as Error).message}`);
+    }
+  };
+
+  const { service, sources } = buildAssetPlatform({
+    dataDir: DATA_DIR,
+    bgg: { bearerToken: env("BGG_BEARER_TOKEN") },
+    ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
+  });
+
+  // Catalog feeds assets/tint/slots. Each step is isolated so one failure
+  // (e.g. Obsidian down) doesn't block the others.
+  let games: Game[] = [];
+  await step("catalog", async () => {
+    games = await syncCatalog();
     console.log(`  catalog: ${games.length} games`);
+  });
+  await step("users", async () => {
     await syncUsers();
     console.log(`  users: synced`);
-    await syncAssets(games, service, sources);
-    await enrichTint(games, service);
-    await writeCatalog(DATA_DIR, games);
-    await syncSlots(games);
-  } catch (e) {
-    console.error(`sync failed: ${(e as Error).message}`);
+  });
+  if (games.length) {
+    await step("provider-data", () => enrichProviderData(games, {
+      dataDir: DATA_DIR,
+      bggToken: env("BGG_BEARER_TOKEN"),
+      ludopediaToken: env("LUDOPEDIA_ACCESS_TOKEN"),
+    }));
+    await step("assets", () => syncAssets(games, service, sources));
+    await step("tint", () => enrichTint(games, service));
+    await step("catalog-write", () => writeCatalog(DATA_DIR, games));
   }
+  // Slots come from the calendar, not Obsidian — sync even if catalog failed.
+  await step("slots", () => syncSlots(games));
   console.log(`[${new Date().toISOString()}] sync done`);
 }
 

@@ -1,10 +1,12 @@
 import { loadCatalog } from "./store.ts";
+import type { ProviderFacts, ProviderSnapshot } from "./worker/provider-data.ts";
 
 // Game type + grouping live here. Note parsing moved to the worker (src/worker/parse.ts).
 
 export type Game = {
   id: string;
   name: string;
+  slug?: string;
   language?: string;
   type?: string;
   expansionOf?: string;
@@ -12,6 +14,9 @@ export type Game = {
   purchaseSource?: string;
   purchaseDate?: string;
   tags: string[];
+  playTime?: number;
+  played?: boolean;
+  siteSize?: { widthCm: number; heightCm: number };
   urlBgg?: string;
   urlLudopedia?: string;
   bggId?: string;
@@ -26,6 +31,8 @@ export type Game = {
   forSale: boolean;
   salePrice?: string;
   notes?: string;
+  facts?: ProviderFacts;
+  providerData?: { bgg?: ProviderSnapshot; ludopedia?: ProviderSnapshot };
 };
 
 let cache: { at: number; games: Game[] } | null = null;
@@ -42,15 +49,15 @@ export type GameGroup = { base: Game; expansions: Game[] };
 
 /**
  * Group expansions under their base game. An expansion (`type === "expansion"`)
- * is matched to a base whose `name` equals its `expansion-of` (case-insensitive).
+ * is matched to a base whose `slug` equals its `expansion-of` (case-insensitive).
  * Expansions whose base game isn't in the collection are surfaced as their own
  * top-level entry so nothing is hidden.
  */
 export function groupGames(games: Game[]): GameGroup[] {
   const isExpansion = (g: Game) => g.type === "expansion" && !!g.expansionOf;
-  const baseByName = new Map<string, Game>();
+  const baseBySlug = new Map<string, Game>();
   for (const g of games) {
-    if (!isExpansion(g)) baseByName.set(g.name.toLowerCase(), g);
+    if (!isExpansion(g) && g.slug) baseBySlug.set(g.slug.toLowerCase(), g);
   }
 
   const groups = new Map<string, GameGroup>();
@@ -66,7 +73,7 @@ export function groupGames(games: Game[]): GameGroup[] {
   // Attach expansions; orphans become their own top-level entry.
   for (const g of games) {
     if (!isExpansion(g)) continue;
-    const base = baseByName.get(g.expansionOf!.toLowerCase());
+    const base = baseBySlug.get(g.expansionOf!.toLowerCase());
     if (base) {
       groups.get(base.id)!.expansions.push(g);
     } else {

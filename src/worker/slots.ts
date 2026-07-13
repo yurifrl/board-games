@@ -1,8 +1,14 @@
 /**
  * Slot sync: fetch the owner's game-slot calendar (a Google Calendar private ICS
- * URL) and turn each event into a Slot. The game is resolved from the event
- * title against the catalog; unmatched or blank titles become "open" slots
- * (game to be picked). Capacity comes from a [N] or (N) marker, default 4.
+ * URL) and turn each event into a Slot.
+ *
+ * Game resolution, in priority order:
+ *   1. a `game:` key in the event description — matches a catalog game by slug,
+ *      id, BGG id, Ludopedia id, or exact name (authoritative, no guessing);
+ *   2. otherwise the event title, matched against catalog names (fuzzy).
+ * Blank / "open" titles with no `game:` become open slots (game to be picked).
+ * Seats come from a `seats:` key, else a [N]/(N) marker, else unknown. Not a
+ * hard cap — extra players are accepted as a waitlist.
  *
  * ICS is read-only: this reflects the owner's agenda into the app; it does not
  * create calendar events. Write-back would need the Google Calendar OAuth API.
@@ -11,7 +17,21 @@ import type { Game } from "../games.ts";
 import type { Slot } from "../slots.ts";
 import { parseIcs } from "./ics.ts";
 
-const DEFAULT_CAPACITY = Number(process.env.SLOT_DEFAULT_CAPACITY ?? "4");
+/** Parse `key: value` lines from an event description (a `---` fence is ignored). */
+function parseMeta(desc?: string): Record<string, string> {
+  const meta: Record<string, string> = {};
+  if (!desc) return meta;
+  for (const line of desc.split("\n")) {
+    const t = line.trim();
+    if (!t || t === "---") continue;
+    const i = t.indexOf(":");
+    if (i === -1) continue;
+    const k = t.slice(0, i).trim().toLowerCase();
+    const v = t.slice(i + 1).trim();
+    if (k && v) meta[k] = v;
+  }
+  return meta;
+}
 
 /** Extract a capacity marker like `[6]` or `(6)` from text, else null. */
 function capacityFrom(...texts: (string | undefined)[]): number | null {
@@ -25,7 +45,20 @@ function capacityFrom(...texts: (string | undefined)[]): number | null {
 /** Strip the capacity marker from a title to get the clean game name. */
 const cleanTitle = (s: string): string => s.replace(/[\[(]\d{1,3}[\])]/g, "").trim();
 
-function resolveGame(title: string, games: Game[]): Game | null {
+/** Match a catalog game by an explicit id from the description (slug/id/bgg/ludo/name). */
+function matchExplicit(ref: string, games: Game[]): Game | null {
+  const r = ref.trim().toLowerCase();
+  if (!r) return null;
+  return (
+    games.find((g) => g.slug?.toLowerCase() === r) ??
+    games.find((g) => g.id.toLowerCase() === r) ??
+    games.find((g) => g.bggId === r || g.ludopediaId === r) ??
+    games.find((g) => g.name.toLowerCase() === r) ??
+    null
+  );
+}
+
+function resolveByTitle(title: string, games: Game[]): Game | null {
   const t = cleanTitle(title).toLowerCase();
   if (!t) return null;
   return (
@@ -47,19 +80,21 @@ export async function fetchSlots(icsUrl: string, games: Game[]): Promise<Slot[]>
   const events = parseIcs(await res.text());
 
   return events.map((e): Slot => {
-    const cap = capacityFrom(e.summary, e.description) ?? DEFAULT_CAPACITY;
-    const open = isOpenTitle(e.summary);
-    const game = open ? null : resolveGame(e.summary, games);
+    const meta = parseMeta(e.description);
+    const explicit = meta.game ? matchExplicit(meta.game, games) : null;
+    const open = !explicit && !meta.game && isOpenTitle(e.summary);
+    const game = explicit ?? (open ? null : resolveByTitle(e.summary, games));
+    const seats = meta.seats ? Number(meta.seats) : capacityFrom(e.summary, e.description);
     return {
       id: e.uid.replace(/[^0-9A-Za-z_-]/g, "").slice(0, 64) || Bun.hash(e.uid).toString(36),
       start: e.start,
       end: e.end,
       gameId: game?.id,
-      gameName: game?.name ?? (open ? undefined : cleanTitle(e.summary) || undefined),
+      gameName: game?.name ?? (open ? undefined : (meta.game ?? cleanTitle(e.summary)) || undefined),
       coverGameId: game?.id,
       coverSource: game ? (game.bggId ? "bgg" : game.ludopediaId ? "ludopedia" : undefined) : undefined,
       gameOpen: open,
-      capacity: cap,
+      capacity: seats != null && Number.isFinite(seats) ? seats : undefined,
       location: e.location,
       notes: e.description,
     };

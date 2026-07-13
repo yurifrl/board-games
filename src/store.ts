@@ -50,6 +50,7 @@ export function storePaths(root: string) {
     slots: `${root}/slots.json`,
     signups: `${root}/signups.jsonl`,
     accessRequests: `${root}/access-requests.jsonl`,
+    members: `${root}/members.jsonl`,
     root,
   };
 }

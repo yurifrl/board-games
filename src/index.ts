@@ -20,11 +20,14 @@ import {
   verifySession,
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
-import { collectionPage, invitePage } from "./views.tsx";
-import { playPage, slotPage, requestSentPage, requestsAdminPage } from "./views-play.tsx";
+import { collectionPage, invitePage, slotPage, requestSentPage, membersAdminPage, pendingPage, deniedPage } from "./views.tsx";
 import { loadUpcomingSlots, getSlotView } from "./slots.ts";
 import { join as joinSlot, leave as leaveSlot, slotsForPhone, isJoined } from "./signups.ts";
 import { request as requestAccess, approve as approveAccess, deny as denyAccess, getRequest, listRequests, normPhone } from "./access.ts";
+import { googleConfigured, googleAuthUrl, exchangeCode } from "./google.ts";
+import { requestMember, approveMember, denyMember, getMember, listMembers, normEmail } from "./members.ts";
+import { notifyOwner } from "./hermes.ts";
+import { randomBytes } from "node:crypto";
 import { buildAssetPlatform } from "./asset/platform.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
@@ -84,6 +87,13 @@ async function currentUser(c: Context) {
     if (!req || req.status !== "approved") return null;
     return resolveExplicit(DATA_DIR, claims.email, [req.role ?? "player"]);
   }
+  // Google users: permission resolved from the members store (approve-on-first-sign-in).
+  if (claims.google) {
+    const m = await getMember(DATA_DIR, claims.email);
+    if (!m || m.status !== "approved") return null;
+    const perm = await resolveExplicit(DATA_DIR, claims.email, [m.role ?? "player"]);
+    return { ...perm, name: m.name ?? perm.name };
+  }
   // Permanent users: re-check the whitelist every request so revocation is immediate.
   return getPermission(DATA_DIR, claims.email);
 }
@@ -99,6 +109,8 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200) 
   const hiddenCount = all.length - games.length;
   const groups = groupGames(games);
   const roles = await listRoles(DATA_DIR);
+  const slots = await loadUpcomingSlots(DATA_DIR);
+  const mineSlots = perm ? await slotsForPhone(DATA_DIR, perm.email) : new Set<string>();
   const html = collectionPage({
     groups,
     totalGames: games.length,
@@ -111,6 +123,8 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200) 
     isAuthed,
     showAll,
     hiddenCount,
+    slots,
+    mineSlots,
     login,
   });
   return c.html(html, status as 200);
@@ -175,14 +189,71 @@ app.get("/auth/logout", (c) => {
   return c.redirect("/");
 });
 
-// ---- Play: schedule + slot signups (phone/WhatsApp access) ----
+// ---- Google Sign-In + approve-on-first-sign-in members queue ----
 
-app.get("/play", async (c) => {
-  const perm = await currentUser(c);
-  const slots = await loadUpcomingSlots(DATA_DIR);
-  const mine = perm ? await slotsForPhone(DATA_DIR, perm.email) : new Set<string>();
-  return c.html(playPage({ slots, authed: !!perm, mine, identity: perm?.name ?? perm?.email }));
+app.get("/auth/google", async (c) => {
+  if (!googleConfigured()) return renderHome(c, { error: "Google sign-in isn't configured." }, 500);
+  const state = randomBytes(16).toString("hex");
+  setCookie(c, "g_state", state, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
+  return c.redirect(googleAuthUrl(`${BASE_URL}/auth/google/callback`, state));
 });
+
+app.get("/auth/google/callback", async (c) => {
+  const state = c.req.query("state");
+  const cookieState = getCookie(c, "g_state");
+  deleteCookie(c, "g_state", { path: "/" });
+  if (!state || state !== cookieState) return renderHome(c, { error: "Sign-in expired, try again." }, 400);
+
+  const code = c.req.query("code");
+  if (!code) return c.redirect("/");
+  const id = await exchangeCode(code, `${BASE_URL}/auth/google/callback`);
+  if (!id || !id.emailVerified) return renderHome(c, { error: "Could not verify your Google account." }, 401);
+
+  // Always issue the session (identity is proven); permission is gated by member status.
+  setSessionCookie(c, await issueSessionToken(SECRET, id.email, SESSION_TTL_DAYS * 86400, { google: true }));
+
+  const existing = await getMember(DATA_DIR, id.email);
+  if (existing?.status === "approved") return c.redirect("/");
+  if (existing?.status === "denied") return c.html(deniedPage(), 403);
+
+  // First time (or still pending): record + ping the owner (throttled, no LLM).
+  await requestMember(DATA_DIR, id.email, id.name);
+  const pending = (await listMembers(DATA_DIR)).filter((m) => m.status === "pending").length;
+  notifyOwner({
+    name: id.name ?? id.email,
+    email: id.email,
+    count: pending,
+    url: `${BASE_URL}/admin/requests`,
+  });
+  return c.html(pendingPage({ name: id.name }));
+});
+
+// Admin: review member requests, approve/deny.
+app.get("/admin/requests", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm?.admin) return c.text("Forbidden", 403);
+  return c.html(membersAdminPage({ members: await listMembers(DATA_DIR) }));
+});
+
+app.post("/admin/requests/approve", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm?.admin) return c.text("Forbidden", 403);
+  const form = await c.req.parseBody();
+  const email = normEmail(String(form["email"] ?? ""));
+  if (email) await approveMember(DATA_DIR, email);
+  return c.redirect("/admin/requests");
+});
+
+app.post("/admin/requests/deny", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm?.admin) return c.text("Forbidden", 403);
+  const form = await c.req.parseBody();
+  const email = normEmail(String(form["email"] ?? ""));
+  if (email) await denyMember(DATA_DIR, email);
+  return c.redirect("/admin/requests");
+});
+
+// ---- Play: game slots synced from the calendar (shown on home; shareable per slot) ----
 
 app.get("/slot/:id", async (c) => {
   const perm = await currentUser(c);
@@ -194,23 +265,23 @@ app.get("/slot/:id", async (c) => {
 
 app.post("/slot/:id/join", async (c) => {
   const perm = await currentUser(c);
-  if (!perm) return c.redirect("/play");
+  if (!perm) return c.redirect("/");
   const slot = await getSlotView(DATA_DIR, c.req.param("id"));
   if (!slot) return c.notFound();
-  const already = await isJoined(DATA_DIR, slot.id, perm.email);
-  if (!already && slot.spotsLeft > 0) {
+  // No hard cap: extra players are accepted (waitlist). Just dedupe.
+  if (!(await isJoined(DATA_DIR, slot.id, perm.email))) {
     const form = await c.req.parseBody();
     const gamePref = String(form["gamePref"] ?? "").trim() || undefined;
     await joinSlot(DATA_DIR, { slotId: slot.id, phone: perm.email, name: perm.name, gamePref });
   }
-  return c.redirect("/play");
+  return c.redirect("/");
 });
 
 app.post("/slot/:id/leave", async (c) => {
   const perm = await currentUser(c);
-  if (!perm) return c.redirect("/play");
+  if (!perm) return c.redirect("/");
   await leaveSlot(DATA_DIR, c.req.param("id"), perm.email);
-  return c.redirect("/play");
+  return c.redirect("/");
 });
 
 // Public: submit a WhatsApp number to request access. Approved -> log in now.
@@ -218,11 +289,11 @@ app.post("/access/request", async (c) => {
   const form = await c.req.parseBody();
   const phone = normPhone(String(form["phone"] ?? ""));
   const name = String(form["name"] ?? "").trim() || undefined;
-  if (!phone) return c.redirect("/play");
+  if (!phone) return c.redirect("/");
   const existing = await getRequest(DATA_DIR, phone);
   if (existing?.status === "approved") {
     setSessionCookie(c, await issueSessionToken(SECRET, phone, SESSION_TTL_DAYS * 86400, { phone: true }));
-    return c.redirect("/play");
+    return c.redirect("/");
   }
   await requestAccess(DATA_DIR, { phone, name });
   return c.html(requestSentPage({ phone, ownerWa: WHATSAPP, approved: false }));
@@ -232,44 +303,11 @@ app.post("/access/request", async (c) => {
 app.get("/auth/pass", async (c) => {
   const token = c.req.query("token") ?? "";
   const pass = await verifyPass(SECRET, token);
-  if (!pass) return c.redirect("/play");
+  if (!pass) return c.redirect("/");
   const req = await getRequest(DATA_DIR, pass.phone);
-  if (!req || req.status !== "approved") return c.redirect("/play");
+  if (!req || req.status !== "approved") return c.redirect("/");
   setSessionCookie(c, await issueSessionToken(SECRET, pass.phone, SESSION_TTL_DAYS * 86400, { phone: true }));
-  return c.redirect("/play");
-});
-
-// Admin: review access requests, approve/deny, get pass links.
-app.get("/admin/requests", async (c) => {
-  const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
-  const requests = await listRequests(DATA_DIR);
-  const passLinks: Record<string, string> = {};
-  for (const r of requests) {
-    if (r.status === "approved") {
-      const token = await issuePassToken(SECRET, r.phone);
-      passLinks[r.phone] = `${BASE_URL}/auth/pass?token=${encodeURIComponent(token)}`;
-    }
-  }
-  return c.html(requestsAdminPage({ requests, baseUrl: BASE_URL, passLinks }));
-});
-
-app.post("/admin/requests/approve", async (c) => {
-  const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
-  const form = await c.req.parseBody();
-  const phone = normPhone(String(form["phone"] ?? ""));
-  if (phone) await approveAccess(DATA_DIR, phone);
-  return c.redirect("/admin/requests");
-});
-
-app.post("/admin/requests/deny", async (c) => {
-  const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
-  const form = await c.req.parseBody();
-  const phone = normPhone(String(form["phone"] ?? ""));
-  if (phone) await denyAccess(DATA_DIR, phone);
-  return c.redirect("/admin/requests");
+  return c.redirect("/");
 });
 
 app.get("/healthz", (c) => c.json({ ok: true }));
@@ -277,7 +315,7 @@ app.get("/healthz", (c) => c.json({ ok: true }));
 app.get("/styles.css", async (c) => {
   const f = Bun.file(join(import.meta.dir, "public", "styles.css"));
   return new Response(f, {
-    headers: { "Content-Type": "text/css", "Cache-Control": "public, max-age=3600" },
+    headers: { "Content-Type": "text/css", "Cache-Control": "no-cache" },
   });
 });
 

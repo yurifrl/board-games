@@ -7,8 +7,7 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "worker": "bun run src/worker/index.ts",
-    "sync": "SYNC_ONCE=1 bun run src/worker/index.ts",
-    "repoint-covers": "bun run src/worker/repoint-covers.ts"
+    "worker-sync-once": "SYNC_ONCE=1 bun run src/worker/index.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",

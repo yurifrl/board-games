@@ -8,6 +8,8 @@ export type SessionClaims = {
   tmp?: boolean;
   /** Marks a phone/WhatsApp user; permission resolved from the access-requests store. */
   phone?: boolean;
+  /** Marks a Google user; permission resolved from the members store. */
+  google?: boolean;
 };
 
 /**
@@ -19,12 +21,13 @@ export async function issueSessionToken(
   secret: string,
   email: string,
   ttlSeconds: number,
-  opts: { tmp?: boolean; phone?: boolean } = {},
+  opts: { tmp?: boolean; phone?: boolean; google?: boolean } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload: Record<string, unknown> = { sub: email.toLowerCase(), kind: "session", iat: now, exp: now + ttlSeconds };
   if (opts.tmp) payload.tmp = true;
   if (opts.phone) payload.phone = true;
+  if (opts.google) payload.google = true;
   return sign(payload, secret, ALG);
 }
 
@@ -32,7 +35,7 @@ export async function verifySession(secret: string, token: string): Promise<Sess
   try {
     const p = await verify(token, secret, ALG);
     if (p.kind !== "session" || typeof p.sub !== "string") return null;
-    return { email: p.sub, tmp: p.tmp === true, phone: p.phone === true };
+    return { email: p.sub, tmp: p.tmp === true, phone: p.phone === true, google: p.google === true };
   } catch {
     return null; // bad signature or expired
   }

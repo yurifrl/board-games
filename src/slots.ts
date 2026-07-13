@@ -14,12 +14,14 @@ export type Slot = {
   coverGameId?: string; // catalog game id to render a cover for (= gameId when resolved)
   coverSource?: "bgg" | "ludopedia"; // which asset source has the cover
   gameOpen: boolean;
-  capacity: number;
+  /** Seats in the game (its max players) when known. Not a hard cap — extra
+   * players are accepted as a waitlist. Undefined = unknown. */
+  capacity?: number;
   location?: string;
   notes?: string;
 };
 
-export type SlotView = Slot & { taken: number; spotsLeft: number };
+export type SlotView = Slot & { taken: number; over: boolean };
 
 /** Upcoming slots (end in the future), soonest first, with live signup counts. */
 export async function loadUpcomingSlots(dataDir: string): Promise<SlotView[]> {
@@ -30,7 +32,7 @@ export async function loadUpcomingSlots(dataDir: string): Promise<SlotView[]> {
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
     .map((s) => {
       const taken = counts.get(s.id) ?? 0;
-      return { ...s, taken, spotsLeft: Math.max(0, s.capacity - taken) };
+      return { ...s, taken, over: s.capacity != null && taken > s.capacity };
     });
 }
 
@@ -39,5 +41,5 @@ export async function getSlotView(dataDir: string, id: string): Promise<SlotView
   const s = slots.find((x) => x.id === id);
   if (!s) return null;
   const taken = counts.get(s.id) ?? 0;
-  return { ...s, taken, spotsLeft: Math.max(0, s.capacity - taken) };
+  return { ...s, taken, over: s.capacity != null && taken > s.capacity };
 }

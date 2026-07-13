@@ -66,7 +66,7 @@ record to revoke). Admin role can't be granted to temp users.
 ## Expansions
 
 Games with `type: "expansion"` and an `expansion-of:` matching a base game's
-`name` are nested under that base in the UI. Orphans show as top-level cards.
+`slug` are nested under that base in the UI. Orphans show as top-level cards.
 
 | Capability     | Effect                                                       |
 |----------------|--------------------------------------------------------------|
@@ -87,10 +87,11 @@ downgrades.
 ## Inventory note format
 
 Games are parsed from the YAML frontmatter of `.md` files in the vault folder
-`Yuri/Resources/Board Games/Inventory`. Recognized fields: `id`, `name`,
+`Yuri/Resources/Board Games/Inventory`. Recognized fields: `id`, `name`, `slug`,
 `language`, `type`, `expansion-of`, `price`, `purchase/source`,
-`purchase/date`, `tags`, `bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`,
-`image/grid`. To list a game for sale:
+`purchase/date`, `tags`, `play_time` (minutes), `played` (boolean), `site/size`,
+`bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`, `image/grid`. Categories use
+`tags`. To list a game for sale:
 
 ```yaml
 for_sale: true
