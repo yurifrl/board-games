@@ -20,9 +20,9 @@ import {
   verifySession,
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
-import { collectionPage, invitePage, slotPage, requestSentPage, membersAdminPage, pendingPage, deniedPage } from "./views.tsx";
-import { loadUpcomingSlots, getSlotView } from "./slots.ts";
-import { join as joinSlot, leave as leaveSlot, slotsForPhone, isJoined } from "./signups.ts";
+import { collectionPage, invitePage, slotPage, requestSentPage, membersAdminPage, pendingPage, deniedPage, bookingPage } from "./views.tsx";
+import { upcomingSessions, openBlocks, getSlotView } from "./slots.ts";
+import { bookGame, joinSession, leaveSession, syncCalendar } from "./calendar.ts";
 import { request as requestAccess, approve as approveAccess, deny as denyAccess, getRequest, listRequests, normPhone } from "./access.ts";
 import { googleConfigured, googleAuthUrl, exchangeCode } from "./google.ts";
 import { requestMember, approveMember, denyMember, getMember, listMembers, normEmail } from "./members.ts";
@@ -109,8 +109,10 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200) 
   const hiddenCount = all.length - games.length;
   const groups = groupGames(games);
   const roles = await listRoles(DATA_DIR);
-  const slots = await loadUpcomingSlots(DATA_DIR);
-  const mineSlots = perm ? await slotsForPhone(DATA_DIR, perm.email) : new Set<string>();
+  const slots = await upcomingSessions(DATA_DIR);
+  const mineSlots = perm
+    ? new Set(slots.filter((s) => s.players.includes(perm.email.toLowerCase())).map((s) => s.id))
+    : new Set<string>();
   const html = collectionPage({
     groups,
     totalGames: games.length,
@@ -195,9 +197,9 @@ app.get("/auth/google", async (c) => {
   if (!googleConfigured()) return renderHome(c, { error: "Google sign-in isn't configured." }, 500);
   const state = randomBytes(16).toString("hex");
   setCookie(c, "g_state", state, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
-  // Remember the slot they were claiming so we can auto-join it after approval.
-  const slot = c.req.query("slot");
-  if (slot) setCookie(c, "g_slot", slot, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
+  // Remember the game they wanted to play so we can send them to booking after approval.
+  const game = c.req.query("game");
+  if (game) setCookie(c, "g_game", game, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
   return c.redirect(googleAuthUrl(`${BASE_URL}/auth/google/callback`, state));
 });
 
@@ -215,20 +217,14 @@ app.get("/auth/google/callback", async (c) => {
   // Always issue the session (identity is proven); permission is gated by member status.
   setSessionCookie(c, await issueSessionToken(SECRET, id.email, SESSION_TTL_DAYS * 86400, { google: true }));
 
-  // The slot they clicked "I want to play" on before logging in (if any).
-  const wantSlot = getCookie(c, "g_slot");
-  if (wantSlot) deleteCookie(c, "g_slot", { path: "/" });
+  // The game they clicked "I want to play" on before logging in (if any).
+  const wantGame = getCookie(c, "g_game");
+  if (wantGame) deleteCookie(c, "g_game", { path: "/" });
 
   const existing = await getMember(DATA_DIR, id.email);
   if (existing?.status === "approved") {
-    // Auto-claim the date they came in to book.
-    if (wantSlot) {
-      const slot = await getSlotView(DATA_DIR, wantSlot);
-      if (slot && !(await isJoined(DATA_DIR, slot.id, id.email))) {
-        await joinSlot(DATA_DIR, { slotId: slot.id, phone: id.email, name: id.name });
-      }
-    }
-    return c.redirect("/");
+    // Send them straight to booking the game they came in for.
+    return c.redirect(wantGame ? `/game/${encodeURIComponent(wantGame)}/play` : "/");
   }
   if (existing?.status === "denied") return c.html(deniedPage(), 403);
 
@@ -269,34 +265,58 @@ app.post("/admin/requests/deny", async (c) => {
   return c.redirect("/admin/requests");
 });
 
-// ---- Play: game slots synced from the calendar (shown on home; shareable per slot) ----
+// ---- Play: game-first booking against the calendar (source of truth) ----
 
+// Shareable per-session page.
 app.get("/slot/:id", async (c) => {
   const perm = await currentUser(c);
   const slot = await getSlotView(DATA_DIR, c.req.param("id"));
   if (!slot) return c.notFound();
-  const mine = perm ? await isJoined(DATA_DIR, slot.id, perm.email) : false;
+  const mine = !!perm && slot.players.includes(perm.email.toLowerCase());
   return c.html(slotPage({ slot, authed: !!perm, mine }));
 });
 
-app.post("/slot/:id/join", async (c) => {
+// Declare intention: pick one of the owner's open availability blocks for a game.
+app.get("/game/:id/play", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm) return c.redirect(`/auth/google?game=${encodeURIComponent(c.req.param("id"))}`);
+  const game = (await loadGames(DATA_DIR)).find((g) => g.id === c.req.param("id"));
+  if (!game) return c.notFound();
+  const blocks = await openBlocks(DATA_DIR);
+  return c.html(bookingPage({ game, blocks }));
+});
+
+// Book: assign the game into the chosen block at the adjusted time, then re-sync.
+app.post("/game/:id/book", async (c) => {
   const perm = await currentUser(c);
   if (!perm) return c.redirect("/");
-  const slot = await getSlotView(DATA_DIR, c.req.param("id"));
-  if (!slot) return c.notFound();
-  // No hard cap: extra players are accepted (waitlist). Just dedupe.
-  if (!(await isJoined(DATA_DIR, slot.id, perm.email))) {
-    const form = await c.req.parseBody();
-    const gamePref = String(form["gamePref"] ?? "").trim() || undefined;
-    await joinSlot(DATA_DIR, { slotId: slot.id, phone: perm.email, name: perm.name, gamePref });
-  }
+  const game = (await loadGames(DATA_DIR)).find((g) => g.id === c.req.param("id"));
+  if (!game) return c.notFound();
+  const form = await c.req.parseBody();
+  const blockId = String(form["blockId"] ?? "");
+  const start = String(form["start"] ?? "");
+  const durationMin = Number(form["durationMin"] ?? game.playTime ?? 120);
+  if (!blockId || !start) return c.redirect(`/game/${game.id}/play`);
+  const startDate = new Date(start);
+  const endDate = new Date(startDate.getTime() + durationMin * 60_000);
+  await bookGame(blockId, { id: game.id, name: game.name }, startDate.toISOString(), endDate.toISOString(), perm.email);
+  await syncCalendar(DATA_DIR);
   return c.redirect("/");
 });
 
-app.post("/slot/:id/leave", async (c) => {
+app.post("/session/:id/join", async (c) => {
   const perm = await currentUser(c);
   if (!perm) return c.redirect("/");
-  await leaveSlot(DATA_DIR, c.req.param("id"), perm.email);
+  await joinSession(c.req.param("id"), perm.email);
+  await syncCalendar(DATA_DIR);
+  return c.redirect("/");
+});
+
+app.post("/session/:id/leave", async (c) => {
+  const perm = await currentUser(c);
+  if (!perm) return c.redirect("/");
+  await leaveSession(c.req.param("id"), perm.email);
+  await syncCalendar(DATA_DIR);
   return c.redirect("/");
 });
 

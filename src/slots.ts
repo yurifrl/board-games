@@ -1,45 +1,45 @@
 import { loadSlots } from "./store.ts";
-import { signupCounts } from "./signups.ts";
 
 /**
- * A game slot on the owner's agenda, synced from the calendar by the worker.
- * `gameOpen` marks a slot where the game is still to be picked.
+ * A slot is a calendar event, synced by the calendar layer (src/calendar.ts).
+ * `isBlock` = an open availability block (no game yet); otherwise it's a booked
+ * session with a game + players. The calendar is the source of truth; this reads
+ * the local cache the sync writes.
  */
 export type Slot = {
-  id: string;
-  start: string; // ISO
-  end: string; // ISO
+  id: string; // calendar event id
+  start: string;
+  end: string;
+  location?: string;
   gameId?: string;
   gameName?: string;
-  coverGameId?: string; // catalog game id to render a cover for (= gameId when resolved)
-  coverSource?: "bgg" | "ludopedia"; // which asset source has the cover
-  gameOpen: boolean;
-  /** Seats in the game (its max players) when known. Not a hard cap — extra
-   * players are accepted as a waitlist. Undefined = unknown. */
-  capacity?: number;
-  location?: string;
-  notes?: string;
+  coverGameId?: string;
+  coverSource?: "bgg" | "ludopedia";
+  players: string[]; // member emails seated in this session
+  isBlock: boolean;
 };
 
-export type SlotView = Slot & { taken: number; over: boolean };
+export type SlotView = Slot & { taken: number };
 
-/** Upcoming slots (end in the future), soonest first, with live signup counts. */
-export async function loadUpcomingSlots(dataDir: string): Promise<SlotView[]> {
-  const [slots, counts] = await Promise.all([loadSlots(dataDir), signupCounts(dataDir)]);
+async function upcoming(dataDir: string): Promise<SlotView[]> {
+  const slots = await loadSlots(dataDir);
   const now = Date.now();
   return slots
     .filter((s) => Date.parse(s.end) >= now)
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
-    .map((s) => {
-      const taken = counts.get(s.id) ?? 0;
-      return { ...s, taken, over: s.capacity != null && taken > s.capacity };
-    });
+    .map((s) => ({ ...s, taken: s.players.length }));
 }
 
+/** Booked sessions (game assigned), soonest first. */
+export const upcomingSessions = async (dataDir: string): Promise<SlotView[]> =>
+  (await upcoming(dataDir)).filter((s) => !s.isBlock);
+
+/** Open availability blocks the owner set up, soonest first. */
+export const openBlocks = async (dataDir: string): Promise<SlotView[]> =>
+  (await upcoming(dataDir)).filter((s) => s.isBlock);
+
 export async function getSlotView(dataDir: string, id: string): Promise<SlotView | null> {
-  const [slots, counts] = await Promise.all([loadSlots(dataDir), signupCounts(dataDir)]);
+  const slots = await loadSlots(dataDir);
   const s = slots.find((x) => x.id === id);
-  if (!s) return null;
-  const taken = counts.get(s.id) ?? 0;
-  return { ...s, taken, over: s.capacity != null && taken > s.capacity };
+  return s ? { ...s, taken: s.players.length } : null;
 }

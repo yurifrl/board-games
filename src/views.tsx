@@ -179,6 +179,7 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
           </div>
 
           <section id={`panel-${g.id}-overview`} class="pane active" data-p="overview" role="tabpanel" aria-labelledby={`tab-${g.id}-overview`}>
+            <a class="btn play declare" href={perm.email ? `/game/${g.id}/play` : `/auth/google?game=${g.id}`}>🗓 I want to play this</a>
             {showSale ? <><h2>This copy</h2><PriceLine g={g} perm={perm} /><BidButton g={g} perm={perm} whatsapp={whatsapp} /></> : null}
             {grp.expansions.length ? (
               <div class="exps">
@@ -241,41 +242,38 @@ const whenStr = (iso: string): string => {
   }
 };
 
+// A booked game session (a calendar event with a game assigned). `mine` = the
+// current member is already seated. Joining/leaving edits the calendar event.
 const SlotCard: FC<{ s: SlotView; authed: boolean; mine: boolean; big?: boolean }> = ({ s, authed, mine, big }) => (
   <article class={`slot${big ? " big" : ""}`}>
     <div class="slot-cover">
-      {s.gameOpen ? (
-        <div class="open-cover">🎲<span>Game to be picked</span></div>
-      ) : s.coverGameId && s.coverSource ? (
+      {s.coverGameId && s.coverSource ? (
         <img src={signedCover(s.coverGameId, s.coverSource)} alt={s.gameName ?? ""} loading="lazy" />
       ) : (
         <div class="open-cover">🎲<span>{s.gameName}</span></div>
       )}
     </div>
     <div class="slot-body">
-      <div class="slot-title">{s.gameOpen ? "Open slot" : s.gameName}</div>
+      <div class="slot-title">{s.gameName}</div>
       <div class="slot-meta">
         <span>🗓 {whenStr(s.start)}</span>
         {s.location ? <span>📍 {s.location}</span> : null}
       </div>
       <div class="slot-count">
-        <span class={`spots${s.over ? " over" : ""}`}>{s.taken} playing</span>
-        {s.capacity != null ? <span class="tag">{s.capacity} seats</span> : null}
-        {s.over ? <span class="tag warn">+{s.taken - (s.capacity ?? 0)} waitlist</span> : null}
+        <span class="spots">{s.taken} playing</span>
       </div>
       {authed ? (
         mine ? (
-          <form method="post" action={`/slot/${s.id}/leave`}>
+          <form method="post" action={`/session/${s.id}/leave`}>
             <button class="btn leave" type="submit">Leave</button>
           </form>
         ) : (
-          <form method="post" action={`/slot/${s.id}/join`} class="join">
-            {s.gameOpen ? <input name="gamePref" placeholder="Game you'd like (optional)" autocomplete="off" /> : null}
-            <button class="btn play" type="submit">I want to play</button>
+          <form method="post" action={`/session/${s.id}/join`}>
+            <button class="btn play" type="submit">I'm in</button>
           </form>
         )
       ) : (
-        <a class="btn play" href={`/auth/google?slot=${s.id}`}>I want to play</a>
+        <a class="btn play" href="/auth/google">Sign in to join</a>
       )}
     </div>
   </article>
@@ -291,19 +289,66 @@ const SlotsSection: FC<{ slots: SlotView[]; authed: boolean; mine: Set<string> }
   );
 };
 
-const FilterChoice: FC<{ id: string; label: string; options: { value: string; label: string }[] }> = ({ id, label, options }) => (
-  <fieldset id={id} class="filter-choice">
-    <legend>{label}</legend>
-    <div class="choice-options">
-      {options.map((option, index) => (
-        <label>
-          <input type="radio" name={id} value={option.value} checked={index === 0} />
-          <span>{option.label}</span>
-        </label>
-      ))}
-    </div>
-  </fieldset>
-);
+// Booking page: pick one of the owner's open availability blocks for this game.
+// Start pre-fills to the block start, duration to the game's registered play
+// time — both adjustable.
+export function bookingPage(opts: { game: Game; blocks: SlotView[] }): string {
+  const { game, blocks } = opts;
+  const dur = game.playTime ?? 120;
+  const toLocal = (iso: string) => {
+    const d = new Date(iso);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  return doc(
+    <Layout title={`Play ${game.name}`}>
+      <div class="topbar">
+        <div class="title">🎲 Play {game.name}</div>
+        <a class="btn" href="/">Home</a>
+      </div>
+      <main class="play">
+        <h2 class="sec">Pick a time</h2>
+        {blocks.length === 0 ? (
+          <p class="note">No open slots right now — the owner hasn't posted availability. Check back soon.</p>
+        ) : (
+          <div class="slots">
+            {blocks.map((b) => (
+              <article class="slot">
+                <div class="slot-body">
+                  <div class="slot-meta"><span>🗓 {whenStr(b.start)}</span>{b.location ? <span>📍 {b.location}</span> : null}</div>
+                  <form method="post" action={`/game/${game.id}/book`} class="join">
+                    <input type="hidden" name="blockId" value={b.id} />
+                    <label class="note">Start<input type="datetime-local" name="start" value={toLocal(b.start)} required /></label>
+                    <label class="note">Minutes<input type="number" name="durationMin" value={String(dur)} min="15" step="15" required /></label>
+                    <button class="btn play" type="submit">Book this slot</button>
+                  </form>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </main>
+    </Layout>,
+  );
+}
+
+const FilterChoice: FC<{ id: string; label: string; options: { value: string; label: string }[] }> = ({ id, label, options }) => {
+  const searchable = options.length > 10;
+  return (
+    <fieldset id={id} class={`filter-choice${searchable ? " filter-choice-long" : ""}`}>
+      <legend>{label}</legend>
+      {searchable ? <input class="choice-search" type="search" placeholder={`Find ${label.toLowerCase()}…`} aria-label={`Search ${label.toLowerCase()}`} autocomplete="off" /> : null}
+      <div class="choice-options" data-filter-options={searchable ? "" : undefined}>
+        {options.map((option, index) => (
+          <label>
+            <input type="radio" name={id} value={option.value} checked={index === 0} />
+            <span data-filter-label={option.label}>{option.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+};
 
 const CollectionTools: FC<{ groups: GameGroup[]; canFilterSale: boolean }> = ({ groups, canFilterSale }) => {
   const games = groups.flatMap((group) => [group.base, ...group.expansions]);
@@ -342,14 +387,17 @@ const CollectionTools: FC<{ groups: GameGroup[]; canFilterSale: boolean }> = ({ 
       <div id="filter-panel" class="filter-panel" role="dialog" aria-modal="true" aria-labelledby="filter-title" hidden>
         <div class="filter-head">
           <strong id="filter-title">Filters</strong>
-          <button id="filter-close" type="button" aria-label="Close filters">✕</button>
+          <div class="filter-head-actions">
+            <button id="clear-panel-filters" type="button">Clear all</button>
+            <button id="filter-close" type="button" aria-label="Close filters">✕</button>
+          </div>
         </div>
         <div class="filter-grid">
           <FilterChoice id="game-type" label="Type" options={[{ value: "", label: "All" }, ...types.map((type) => ({ value: type.toLowerCase(), label: type }))]} />
           <FilterChoice id="game-category" label="Your category" options={[{ value: "", label: "All" }, ...categories.map((category) => ({ value: category.toLowerCase(), label: category }))]} />
           {providerCategories.length ? <FilterChoice id="game-provider-category" label="Provider category" options={[{ value: "", label: "All" }, ...providerCategories.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
           <FilterChoice id="game-playtime" label="Play time" options={[{ value: "", label: "Any" }, { value: "30", label: "≤ 30m" }, { value: "60", label: "31–60m" }, { value: "120", label: "61–120m" }, { value: "121", label: "2h+" }]} />
-          {maxPlayers ? <FilterChoice id="game-players" label="Players" options={[{ value: "", label: "Any" }, ...Array.from({ length: maxPlayers }, (_, index) => ({ value: String(index + 1), label: String(index + 1) }))]} /> : null}
+          {maxPlayers ? <FilterChoice id="game-players" label="Players" options={[{ value: "", label: "Any" }, ...["1", "2", "3", "4", "4+", "8+", "12+"].map((value) => ({ value, label: value }))]} /> : null}
           <FilterChoice id="game-complexity" label="Complexity" options={[{ value: "", label: "Any" }, { value: "2", label: "≤ 2" }, { value: "3", label: "2–3" }, { value: "4", label: "3–4" }, { value: "5", label: "4+" }]} />
           <FilterChoice id="game-rating" label="Rating" options={[{ value: "", label: "Any" }, { value: "6", label: "6+" }, { value: "7", label: "7+" }, { value: "8", label: "8+" }, { value: "9", label: "9+" }]} />
           {years.length ? <FilterChoice id="game-year" label="Published" options={[{ value: "", label: "Any" }, ...years.map((year) => ({ value: String(year), label: String(year) }))]} /> : null}
@@ -444,22 +492,31 @@ export function collectionPage(opts: {
             var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf');
             boxes.forEach(function(b){if(b.classList.contains('sized'))return;var i=b.querySelector('img');if(!i)return;var size=function(){if(i.naturalWidth)b.style.aspectRatio=i.naturalWidth+'/'+i.naturalHeight;};i.complete?size():i.addEventListener('load',size);});
             var controls={search:document.querySelector('#game-search'),type:document.querySelector('#game-type'),category:document.querySelector('#game-category'),providerCategory:document.querySelector('#game-provider-category'),playtime:document.querySelector('#game-playtime'),players:document.querySelector('#game-players'),complexity:document.querySelector('#game-complexity'),rating:document.querySelector('#game-rating'),year:document.querySelector('#game-year'),mechanic:document.querySelector('#game-mechanic'),designer:document.querySelector('#game-designer'),publisher:document.querySelector('#game-publisher'),languageDependency:document.querySelector('#game-language-dependency'),played:document.querySelector('#game-played'),language:document.querySelector('#game-language'),sale:document.querySelector('#game-sale')};
-            var sort=document.querySelector('#game-sort'),results=document.querySelector('#game-results'),empty=document.querySelector('#filter-empty'),clear=document.querySelector('#clear-filters'),count=document.querySelector('#filter-count'),chips=document.querySelector('#filter-chips');
-            var panel=document.querySelector('#filter-panel'),backdrop=document.querySelector('#filter-backdrop'),filterToggle=document.querySelector('#filter-toggle'),filterClose=document.querySelector('#filter-close');
-            function setFilterOpen(open){panel.hidden=!open;backdrop.hidden=!open;filterToggle.setAttribute('aria-expanded',String(open));document.body.classList.toggle('filters-open',open);}
+            var sort=document.querySelector('#game-sort'),results=document.querySelector('#game-results'),empty=document.querySelector('#filter-empty'),clear=document.querySelector('#clear-filters'),panelClear=document.querySelector('#clear-panel-filters'),count=document.querySelector('#filter-count'),chips=document.querySelector('#filter-chips');
+            var panel=document.querySelector('#filter-panel'),backdrop=document.querySelector('#filter-backdrop'),filterToggle=document.querySelector('#filter-toggle'),filterClose=document.querySelector('#filter-close'),optionSearches=Array.from(document.querySelectorAll('.choice-search'));
+            function resetOptionSearches(){optionSearches.forEach(function(input){input.value='';input.closest('.filter-choice').querySelectorAll('[data-filter-options] label').forEach(function(label){label.hidden=false;});});}
+            function setFilterOpen(open){panel.hidden=!open;backdrop.hidden=!open;filterToggle.setAttribute('aria-expanded',String(open));document.body.classList.toggle('filters-open',open);if(!open)resetOptionSearches();}
+            function filterOptions(input){var q=input.value.trim().toLowerCase();input.closest('.filter-choice').querySelectorAll('[data-filter-options] label').forEach(function(label){var radio=label.querySelector('input');label.hidden=!!q&&radio.value!==''&&!radio.checked&&!radio.nextElementSibling.dataset.filterLabel.toLowerCase().includes(q);});}
+            optionSearches.forEach(function(input){input.addEventListener('input',function(){filterOptions(input);});});
             filterToggle.addEventListener('click',function(){setFilterOpen(panel.hidden);});filterClose.addEventListener('click',function(){setFilterOpen(false);});backdrop.addEventListener('click',function(){setFilterOpen(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')setFilterOpen(false);});
             function matchesTime(value,range){var n=Number(value);if(!range)return true;if(!n)return false;if(range==='30')return n<=30;if(range==='60')return n>30&&n<=60;if(range==='120')return n>60&&n<=120;return n>120;}
             function includes(value,selected){return !selected||(value||'').split('|').includes(selected);}
-            function matchesPlayers(d,value){var n=Number(value);return !n||(Number(d.playersMin)<=n&&Number(d.playersMax)>=n);}
+            function matchesPlayers(d,value){if(!value)return true;var max=Number(d.playersMax);if(value.endsWith('+'))return max>=Number(value.slice(0,-1));var n=Number(value);return Number(d.playersMin)<=n&&max>=n;}
             function matchesComplexity(value,range){var n=Number(value);if(!range)return true;if(!n)return false;if(range==='2')return n<=2;if(range==='3')return n>2&&n<=3;if(range==='4')return n>3&&n<=4;return n>4;}
+            function getValues(){var values={};Object.keys(controls).forEach(function(k){var c=controls[k],input=c&&c.matches('fieldset')?c.querySelector('input:checked'):c;values[k]=input?input.value.trim().toLowerCase():'';});return values;}
+            function matchesBox(b,values){var d=b.dataset;return(!values.search||d.search.includes(values.search))&&includes(d.type,values.type)&&includes(d.category,values.category)&&includes(d.providerCategory,values.providerCategory)&&includes(d.mechanic,values.mechanic)&&includes(d.designer,values.designer)&&includes(d.publisher,values.publisher)&&includes(d.languageDependency,values.languageDependency)&&(!values.played||d.played===values.played)&&includes(d.language,values.language)&&(!values.sale||d.sale===values.sale)&&matchesTime(d.playtime,values.playtime)&&matchesPlayers(d,values.players)&&matchesComplexity(d.complexity,values.complexity)&&(!values.rating||Number(d.rating)>=Number(values.rating))&&(!values.year||d.year===values.year);}
+            function updateFacets(values){Object.keys(controls).forEach(function(k){var control=controls[k];if(!control||!control.matches('fieldset'))return;control.querySelectorAll('.choice-options input').forEach(function(radio){var candidate=Object.assign({},values);candidate[k]=radio.value.toLowerCase();var total=boxes.filter(function(b){return matchesBox(b,candidate);}).length;radio.disabled=total===0&&!radio.checked;var label=radio.nextElementSibling;label.textContent=label.dataset.filterLabel+' ('+total+')';});});}
             function applyFilters(){
-              var values={};Object.keys(controls).forEach(function(k){var c=controls[k],input=c&&c.matches('fieldset')?c.querySelector('input:checked'):c;values[k]=input?input.value.trim().toLowerCase():'';});
-              var visible=boxes.filter(function(b){var d=b.dataset;var show=(!values.search||d.search.includes(values.search))&&includes(d.type,values.type)&&includes(d.category,values.category)&&includes(d.providerCategory,values.providerCategory)&&includes(d.mechanic,values.mechanic)&&includes(d.designer,values.designer)&&includes(d.publisher,values.publisher)&&includes(d.languageDependency,values.languageDependency)&&(!values.played||d.played===values.played)&&includes(d.language,values.language)&&(!values.sale||d.sale===values.sale)&&matchesTime(d.playtime,values.playtime)&&matchesPlayers(d,values.players)&&matchesComplexity(d.complexity,values.complexity)&&(!values.rating||Number(d.rating)>=Number(values.rating))&&(!values.year||d.year===values.year);b.hidden=!show;return show;});
+              var values=getValues(),visible=boxes.filter(function(b){var show=matchesBox(b,values);b.hidden=!show;return show;});
               visible.sort(function(a,b){if(sort.value==='name')return a.dataset.name.localeCompare(b.dataset.name);var av=Number(sort.value==='newest'?a.dataset.purchased:a.dataset.playtime)||0,bv=Number(sort.value==='newest'?b.dataset.purchased:b.dataset.playtime)||0;return sort.value==='playtime-asc'?(av||Infinity)-(bv||Infinity):bv-av;}).forEach(function(b){shelf.appendChild(b);});
-              var active=Object.keys(values).filter(function(k){return values[k];});results.textContent=visible.length+(visible.length===1?' game':' games');empty.hidden=visible.length!==0;clear.hidden=active.length===0;count.hidden=active.length===0;count.textContent=String(active.length);
-              chips.replaceChildren();active.forEach(function(k){var control=controls[k],input=control.matches('fieldset')?control.querySelector('input:checked'):control,label=k==='search'?'“'+input.value+'”':input.nextElementSibling.textContent;var chip=document.createElement('button');chip.type='button';chip.textContent=label+' ×';chip.onclick=function(){if(control.matches('fieldset'))control.querySelector('input').checked=true;else control.value='';applyFilters();};chips.appendChild(chip);});
+              updateFacets(values);optionSearches.forEach(filterOptions);var active=Object.keys(values).filter(function(k){return values[k];});results.textContent=visible.length+(visible.length===1?' game':' games');empty.hidden=visible.length!==0;clear.hidden=active.length===0;count.hidden=active.length===0;count.textContent=String(active.length);
+              chips.replaceChildren();active.forEach(function(k){var control=controls[k],input=control.matches('fieldset')?control.querySelector('input:checked'):control,label=k==='search'?'“'+input.value+'”':input.nextElementSibling.dataset.filterLabel;var chip=document.createElement('button');chip.type='button';chip.textContent=label+' ×';chip.onclick=function(){if(control.matches('fieldset'))control.querySelector('.choice-options input').checked=true;else control.value='';applyFilters();};chips.appendChild(chip);});
             }
-            Object.keys(controls).forEach(function(k){if(controls[k])controls[k].addEventListener(k==='search'?'input':'change',applyFilters);});sort.addEventListener('change',applyFilters);clear.addEventListener('click',function(){Object.keys(controls).forEach(function(k){var c=controls[k];if(!c)return;if(c.matches('fieldset'))c.querySelector('input').checked=true;else c.value='';});applyFilters();});
+            function clearFilters(){Object.keys(controls).forEach(function(k){var c=controls[k];if(!c)return;if(c.matches('fieldset'))c.querySelector('.choice-options input').checked=true;else c.value='';});resetOptionSearches();applyFilters();}
+            function rememberChecked(e){var label=e.target.closest('.choice-options label');if(label)label.dataset.wasChecked=String(label.querySelector('input').checked);}
+            panel.addEventListener('pointerdown',rememberChecked);panel.addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter')rememberChecked(e);});
+            panel.addEventListener('click',function(e){var label=e.target.closest('.choice-options label');if(!label)return;var wasChecked=label.dataset.wasChecked==='true';delete label.dataset.wasChecked;var radio=label.querySelector('input');if(wasChecked&&radio.value){e.preventDefault();label.closest('fieldset').querySelector('.choice-options input').checked=true;applyFilters();}});
+            Object.keys(controls).forEach(function(k){if(controls[k])controls[k].addEventListener(k==='search'?'input':'change',applyFilters);});sort.addEventListener('change',applyFilters);clear.addEventListener('click',clearFilters);panelClear.addEventListener('click',clearFilters);applyFilters();
             document.addEventListener('click',function(e){var more=e.target.closest('[data-video-more]');if(more){var section=more.closest('[data-video-section]'),hidden=Array.from(section.querySelectorAll('[data-video-extra][hidden]'));hidden.slice(0,6).forEach(function(card){card.hidden=false;});var left=Math.max(0,hidden.length-6);more.hidden=left===0;more.textContent='Load '+Math.min(6,left)+' more';more.setAttribute('aria-expanded','true');return;}var t=e.target.closest('.tabs button');if(t){var h=t.closest('.hub-inner'),n=t.getAttribute('data-t');h.querySelectorAll('.tabs button').forEach(function(b){var active=b.getAttribute('data-t')===n;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});h.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-p')===n);});var sc=h.closest('.hub');if(sc)sc.scrollTop=0;}});
           `,
         }}
@@ -471,9 +528,9 @@ export function collectionPage(opts: {
 export function slotPage(opts: { slot: SlotView; authed: boolean; mine: boolean }): string {
   const { slot, authed, mine } = opts;
   return doc(
-    <Layout title={slot.gameOpen ? "Open slot" : slot.gameName ?? "Slot"}>
+    <Layout title={slot.gameName ?? "Session"}>
       <div class="topbar">
-        <div class="title">🗓 {slot.gameOpen ? "Open slot" : slot.gameName}</div>
+        <div class="title">🗓 {slot.gameName ?? "Game night"}</div>
         <a class="btn" href="/">Home</a>
       </div>
       <main class="play one">

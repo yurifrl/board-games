@@ -15,15 +15,14 @@ import type { AssetService } from "../asset/service.ts";
 import type { Entity } from "../asset/types.ts";
 import { defaultObsidianConfig, listNotes, getNote } from "./obsidian.ts";
 import { parseGameNote, parseUsersNote } from "./parse.ts";
-import { fetchSlots } from "./slots.ts";
 import { enrichProviderData } from "./provider-data.ts";
-import { writeCatalog, writeUsers, writeSlots, loadCatalog, type UsersFile } from "../store.ts";
+import { syncCalendar } from "../calendar.ts";
+import { writeCatalog, writeUsers, type UsersFile } from "../store.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
 const OBSIDIAN_INVENTORY_FOLDER = env("OBSIDIAN_INVENTORY_FOLDER", "Yuri/Resources/Board Games/Inventory");
 const OBSIDIAN_USERS_NOTE = env("OBSIDIAN_USERS_NOTE", "Yuri/Resources/Board Games/Users.md");
-const GCAL_ICS_URL = env("GCAL_ICS_URL");
 const DATA_DIR = env("DATA_DIR", "./data");
 const SYNC_INTERVAL_MS = Number(env("SYNC_INTERVAL_MS", "300000"));
 const SYNC_ONCE = env("SYNC_ONCE") === "1";
@@ -88,18 +87,10 @@ async function enrichTint(games: Game[], service: AssetService): Promise<void> {
   }
 }
 
-async function syncSlots(games: Game[]): Promise<void> {
-  if (!GCAL_ICS_URL) {
-    console.log("  slots: skipped (GCAL_ICS_URL unset)");
-    return;
-  }
-  // Fall back to the last-synced catalog when this cycle's catalog step failed,
-  // so game titles still resolve to covers.
-  const catalog = games.length ? games : await loadCatalog(DATA_DIR);
-  const slots = await fetchSlots(GCAL_ICS_URL, catalog);
-  await writeSlots(DATA_DIR, slots);
-  const open = slots.filter((s) => s.gameOpen).length;
-  console.log(`  slots: ${slots.length} (${open} open)`);
+async function syncSlots(): Promise<void> {
+  const slots = await syncCalendar(DATA_DIR);
+  const open = slots.filter((s) => s.isBlock).length;
+  console.log(`  calendar: ${slots.length} events (${open} open blocks, ${slots.length - open} booked)`);
 }
 
 async function cycle(): Promise<void> {
@@ -140,7 +131,7 @@ async function cycle(): Promise<void> {
     await step("catalog-write", () => writeCatalog(DATA_DIR, games));
   }
   // Slots come from the calendar, not Obsidian — sync even if catalog failed.
-  await step("slots", () => syncSlots(games));
+  await step("slots", () => syncSlots());
   console.log(`[${new Date().toISOString()}] sync done`);
 }
 

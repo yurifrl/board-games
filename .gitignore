@@ -13,3 +13,7 @@ data
 
 # local GCS service-account key for `bun run sync`
 .secrets/
+
+# Google service-account key (never commit)
+*-key.json
+gcp-*.json
