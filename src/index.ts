@@ -20,7 +20,7 @@ import {
   verifySession,
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
-import { collectionPage, invitePage, slotPage, requestSentPage, membersAdminPage, pendingPage, deniedPage, bookingPage } from "./views.tsx";
+import { collectionPage, invitePage, slotPage, requestSentPage, membersAdminPage, pendingPage, deniedPage, bookingPage, noticePage } from "./views.tsx";
 import { upcomingSessions, openBlocks, getSlotView } from "./slots.ts";
 import { bookGame, joinSession, leaveSession, syncCalendar } from "./calendar.ts";
 import { request as requestAccess, approve as approveAccess, deny as denyAccess, getRequest, listRequests, normPhone } from "./access.ts";
@@ -194,7 +194,8 @@ app.get("/auth/logout", (c) => {
 // ---- Google Sign-In + approve-on-first-sign-in members queue ----
 
 app.get("/auth/google", async (c) => {
-  if (!googleConfigured()) return renderHome(c, { error: "Google sign-in isn't configured." }, 500);
+  if (!googleConfigured())
+    return c.html(noticePage({ title: "Sign-in unavailable", message: "Google sign-in isn't set up yet. Ask the owner to finish configuring it." }), 503);
   const state = randomBytes(16).toString("hex");
   setCookie(c, "g_state", state, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
   // Remember the game they wanted to play so we can send them to booking after approval.

@@ -160,7 +160,10 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
         <div class="hub-inner">
           <a class="close" href="#" aria-label="Close">✕</a>
           <div class="hub-head">
-            <CoverImg g={g} cls="cover" />
+            <div class="hub-cover">
+              <CoverImg g={g} cls="cover" />
+              <a class="btn play declare" href={perm.email ? `/game/${g.id}/play` : `/auth/google?game=${g.id}`}>🗓 I want to play this</a>
+            </div>
             <div>
               <h1>{g.name}</h1>
               <div class="tags">
@@ -179,7 +182,6 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
           </div>
 
           <section id={`panel-${g.id}-overview`} class="pane active" data-p="overview" role="tabpanel" aria-labelledby={`tab-${g.id}-overview`}>
-            <a class="btn play declare" href={perm.email ? `/game/${g.id}/play` : `/auth/google?game=${g.id}`}>🗓 I want to play this</a>
             {showSale ? <><h2>This copy</h2><PriceLine g={g} perm={perm} /><BidButton g={g} perm={perm} whatsapp={whatsapp} /></> : null}
             {grp.expansions.length ? (
               <div class="exps">
@@ -657,6 +659,23 @@ export function deniedPage(): string {
         <div class="notice">
           <h2>Access not granted</h2>
           <p class="note">Your account doesn't have access. If you think that's a mistake, reach out to the owner.</p>
+        </div>
+      </main>
+    </Layout>,
+  );
+}
+
+export function noticePage(opts: { title: string; message: string }): string {
+  return doc(
+    <Layout title={opts.title}>
+      <div class="topbar">
+        <div class="title">🎲 Board Games</div>
+        <a class="btn" href="/">Home</a>
+      </div>
+      <main class="play one">
+        <div class="notice">
+          <h2>{opts.title}</h2>
+          <p class="note">{opts.message}</p>
         </div>
       </main>
     </Layout>,
