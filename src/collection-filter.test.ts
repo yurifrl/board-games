@@ -36,9 +36,11 @@ describe("collection filters", () => {
   test("shows complete shelf names without splitting words", async () => {
     const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
     expect(css).toContain("--colgap: 60px");
-    expect(css).toContain("width: min(calc(var(--colw) + var(--colgap) - 24px), calc(100vw - 24px))");
+    expect(css).toContain("max-width: min(calc(var(--colw) + var(--colgap) - 24px), calc(100vw - 24px))");
+    expect(css).toContain("width: max-content");
     expect(css).not.toContain("overflow-wrap: anywhere");
     expect(css).not.toContain("-webkit-line-clamp");
+    expect(css).toContain(".notes-document table { width:100%; margin:18px 0; border-collapse:collapse; display:block; overflow-x:auto;");
   });
 
   test("breaks shelf labels after a colon", () => {
@@ -115,18 +117,34 @@ describe("collection filters", () => {
         languageDependency: "Moderate text",
       },
       providerData: {
-        bgg: { id: "1", fetchedAt: 1, data: '<item><image>https://img.test/cover.jpg</image><description>A & B</description></item>' },
-        ludopedia: { id: "2", fetchedAt: 2, data: { videos: [{ url: "https://video.test/watch/2" }], title: "Ark Nova BR" } },
+        bgg: { id: "1", fetchedAt: 1, data: `<item type="boardgame" id="1"><name type="primary" value="Ark Nova"/><image>https://img.test/cover.jpg</image><description>Build &amp; manage a zoo.</description>${Array.from({ length: 8 }, (_, index) => `<video id="v${index}" title="Video ${index + 1}" category="instructional" link="https://www.youtube.com/watch?v=video${index}"/>`).join("")}<video id="bad" title="Bad" link="javascript:alert(1)"/></item>` },
+        ludopedia: { id: "2", fetchedAt: 2, data: { detail: { nm_jogo: "Ark Nova BR", descricao: "Construa um zoológico." }, videos: { videos: [{ nm_video: "Como jogar", link: "https://www.youtube.com/watch?v=xyz789" }] }, images: { imagens: [{ link: "https://img.test/ludo.jpg" }] }, files: { arquivos: [{ titulo: "Manual", link: "https://files.test/manual.pdf" }] } } },
       },
     };
     const html = render([enriched]);
 
     expect(html).toContain('data-t="bgg"');
     expect(html).toContain('data-t="ludopedia"');
-    expect(html).toContain('data-t="media"');
+    expect(html).not.toContain('data-t="media"');
+    expect(html).not.toContain("Complete BGG response");
     expect(html).toContain("Ark Nova BR");
-    expect(html).toContain("&lt;item&gt;");
-    expect(html).toContain('href="https://video.test/watch/2"');
+    expect(html).toContain("Build &amp; manage a zoo.");
+    expect(html.match(/class="provider-video-card/g)).toHaveLength(9);
+    expect(html).toContain('src="https://i.ytimg.com/vi/video0/hqdefault.jpg"');
+    expect(html.match(/provider-video-extra/g)).toHaveLength(2);
+    expect(html.match(/data-video-extra=""/g)).toHaveLength(2);
+    expect(html).toContain('class="provider-video-more"');
+    expect(html).toContain('data-video-more=""');
+    expect(html).toContain("Load 2 more");
+    expect(html).toContain('src="https://i.ytimg.com/vi/xyz789/hqdefault.jpg"');
+    expect(html).toContain('href="https://boardgamegeek.com/boardgame/1/-/files"');
+    expect(html).toContain('href="https://files.test/manual.pdf"');
+    expect(html).not.toContain("javascript:alert");
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('role="tab"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('role="tabpanel"');
+    expect(html).toContain('aria-controls="panel-ark-nova-bgg"');
     expect(html).toContain('data-players-min="1"');
     expect(html).toContain('data-players-max="4"');
     expect(html).toContain('data-complexity="3.72"');
@@ -143,6 +161,24 @@ describe("collection filters", () => {
     expect(html).toContain('id="game-designer"');
     expect(html).toContain('id="game-publisher"');
     expect(html).toContain('id="game-language-dependency"');
+  });
+
+  test("renders notes as styled markdown with highlighted JSON", () => {
+    const html = render([{ ...game, notes: '# Setup\n\nUse **three cards**.\n\n```json\n{"players": 3}\n```' }]);
+
+    expect(html).toContain('class="notes-document"');
+    expect(html).toContain("<h1>Setup</h1>");
+    expect(html).toContain("<strong>three cards</strong>");
+    expect(html).toContain('class="note-code language-json"');
+    expect(html).toContain('class="json-key">&quot;players&quot;</span>');
+  });
+
+  test("keeps explicit provider tabs visible while data is unavailable", () => {
+    const html = render([{ ...game, bggId: "1", ludopediaId: "2" }]);
+
+    expect(html).toContain('data-t="bgg"');
+    expect(html).toContain('data-t="ludopedia"');
+    expect(html).toContain("Provider data has not been fetched yet.");
   });
 
   test("renders searchable game metadata and mobile filter controls", () => {

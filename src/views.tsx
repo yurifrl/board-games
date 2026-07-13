@@ -5,6 +5,8 @@ import type { Permission } from "./whitelist.ts";
 import type { SlotView } from "./slots.ts";
 import type { Member } from "./members.ts";
 import { sign } from "./asset/auth.ts";
+import { ProviderPane } from "./provider-view.tsx";
+import { renderNote } from "./note-render.ts";
 
 // Signed cover URL: prefer BGG's full-res original, fall back to Ludopedia,
 // else the note's raw image / a placeholder.
@@ -81,47 +83,6 @@ const Tags: FC<{ g: Game }> = ({ g }) => (
   </>
 );
 
-const providerDump = (data: unknown): string => typeof data === "string" ? data : JSON.stringify(data, null, 2);
-
-function providerUrls(data: unknown): string[] {
-  const urls = new Set<string>();
-  const visit = (value: unknown) => {
-    if (typeof value === "string") {
-      for (const match of value.matchAll(/https?:\/\/[^\s"'<>]+/g)) urls.add(match[0].replace(/&amp;/g, "&"));
-    } else if (Array.isArray(value)) {
-      value.forEach(visit);
-    } else if (value && typeof value === "object") {
-      Object.values(value).forEach(visit);
-    }
-  };
-  visit(data);
-  return [...urls];
-}
-
-const ProviderFacts: FC<{ g: Game }> = ({ g }) => {
-  const f = g.facts;
-  if (!f) return null;
-  const values = [
-    ["Year", f.year], ["Players", f.minPlayers && f.maxPlayers ? `${f.minPlayers}–${f.maxPlayers}` : f.minPlayers ?? f.maxPlayers],
-    ["Time", f.playTime ? `${f.playTime} min` : undefined], ["Age", f.minAge ? `${f.minAge}+` : undefined],
-    ["Complexity", f.complexity?.toFixed(2)], ["Rating", f.rating?.toFixed(2)], ["Rank", f.rank ? `#${f.rank}` : undefined],
-    ["Language", f.languageDependency], ["Mechanics", f.mechanics.join(", ")], ["Categories", f.categories.join(", ")],
-    ["Designers", f.designers.join(", ")], ["Publishers", f.publishers.join(", ")],
-  ].filter(([, value]) => value !== undefined && value !== "");
-  return <dl class="provider-facts">{values.map(([label, value]) => <div><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
-};
-
-const ProviderPane: FC<{ g: Game; provider: "bgg" | "ludopedia" }> = ({ g, provider }) => {
-  const snapshot = g.providerData?.[provider];
-  if (!snapshot) return null;
-  return (
-    <section class="pane provider-pane" data-p={provider}>
-      <ProviderFacts g={g} />
-      <details><summary>Complete {provider === "bgg" ? "BGG" : "Ludopedia"} response</summary><pre>{providerDump(snapshot.data)}</pre></details>
-    </section>
-  );
-};
-
 const ExpansionRow: FC<{ g: Game; perm: Permission; whatsapp: string }> = ({ g, perm, whatsapp }) => (
   <div class="exp">
     <span class="ename">+ {g.name}</span>
@@ -192,7 +153,6 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
   const tint = g.tint ?? "#3a3a44";
   const bg = coverSrc(g);
   const showSale = canSeeSale(perm) && (!!g.salePrice || !!g.price);
-  const media = [...new Set([providerUrls(g.providerData?.bgg?.data), providerUrls(g.providerData?.ludopedia?.data)].flat())];
   return (
     <div class="detail" id={`g-${g.id}`} style={`--tint:${tint}`}>
       <a class="detail-bg" href="#" aria-label="Close" style={bg ? `background-image:url("${bg}")` : ""}></a>
@@ -211,15 +171,14 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
             </div>
           </div>
 
-          <div class="tabs">
-            <button class="active" data-t="overview">Overview</button>
-            {g.providerData?.bgg ? <button data-t="bgg">BGG</button> : null}
-            {g.providerData?.ludopedia ? <button data-t="ludopedia">Ludopedia</button> : null}
-            {media.length ? <button data-t="media">Files / Media</button> : null}
-            {g.notes ? <button data-t="notes">Notes</button> : null}
+          <div class="tabs" role="tablist" aria-label={`${g.name} details`}>
+            <button id={`tab-${g.id}-overview`} class="active" data-t="overview" role="tab" aria-selected="true" aria-controls={`panel-${g.id}-overview`}>Overview</button>
+            {g.bggId || g.providerData?.bgg ? <button id={`tab-${g.id}-bgg`} data-t="bgg" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-bgg`} tabindex={-1}>BGG</button> : null}
+            {g.ludopediaId || g.providerData?.ludopedia ? <button id={`tab-${g.id}-ludopedia`} data-t="ludopedia" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-ludopedia`} tabindex={-1}>Ludopedia</button> : null}
+            {g.notes ? <button id={`tab-${g.id}-notes`} data-t="notes" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-notes`} tabindex={-1}>Notes</button> : null}
           </div>
 
-          <section class="pane active" data-p="overview">
+          <section id={`panel-${g.id}-overview`} class="pane active" data-p="overview" role="tabpanel" aria-labelledby={`tab-${g.id}-overview`}>
             {showSale ? <><h2>This copy</h2><PriceLine g={g} perm={perm} /><BidButton g={g} perm={perm} whatsapp={whatsapp} /></> : null}
             {grp.expansions.length ? (
               <div class="exps">
@@ -230,16 +189,11 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
             {!showSale && !grp.expansions.length ? <p class="note">No extra details yet.</p> : null}
           </section>
 
-          <ProviderPane g={g} provider="bgg" />
-          <ProviderPane g={g} provider="ludopedia" />
-          {media.length ? (
-            <section class="pane provider-pane" data-p="media">
-              <ul class="provider-links">{media.map((url) => <li><a href={url} target="_blank" rel="noopener">{url}</a></li>)}</ul>
-            </section>
-          ) : null}
+          <ProviderPane game={g} provider="bgg" />
+          <ProviderPane game={g} provider="ludopedia" />
           {g.notes ? (
-            <section class="pane" data-p="notes">
-              <div class="notes-body">{g.notes}</div>
+            <section id={`panel-${g.id}-notes`} class="pane" data-p="notes" role="tabpanel" aria-labelledby={`tab-${g.id}-notes`}>
+              <article class="notes-document" dangerouslySetInnerHTML={{ __html: renderNote(g.notes) }}></article>
             </section>
           ) : null}
         </div>
@@ -321,7 +275,7 @@ const SlotCard: FC<{ s: SlotView; authed: boolean; mine: boolean; big?: boolean 
           </form>
         )
       ) : (
-        <a class="btn play" href="/auth/google">Sign in to play</a>
+        <a class="btn play" href={`/auth/google?slot=${s.id}`}>I want to play</a>
       )}
     </div>
   </article>
@@ -506,7 +460,7 @@ export function collectionPage(opts: {
               chips.replaceChildren();active.forEach(function(k){var control=controls[k],input=control.matches('fieldset')?control.querySelector('input:checked'):control,label=k==='search'?'“'+input.value+'”':input.nextElementSibling.textContent;var chip=document.createElement('button');chip.type='button';chip.textContent=label+' ×';chip.onclick=function(){if(control.matches('fieldset'))control.querySelector('input').checked=true;else control.value='';applyFilters();};chips.appendChild(chip);});
             }
             Object.keys(controls).forEach(function(k){if(controls[k])controls[k].addEventListener(k==='search'?'input':'change',applyFilters);});sort.addEventListener('change',applyFilters);clear.addEventListener('click',function(){Object.keys(controls).forEach(function(k){var c=controls[k];if(!c)return;if(c.matches('fieldset'))c.querySelector('input').checked=true;else c.value='';});applyFilters();});
-            document.addEventListener('click',function(e){var t=e.target.closest('.tabs button');if(t){var h=t.closest('.hub-inner'),n=t.getAttribute('data-t');h.querySelectorAll('.tabs button').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-t')===n);});h.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-p')===n);});var sc=h.closest('.hub');if(sc)sc.scrollTop=0;}});
+            document.addEventListener('click',function(e){var more=e.target.closest('[data-video-more]');if(more){var section=more.closest('[data-video-section]'),hidden=Array.from(section.querySelectorAll('[data-video-extra][hidden]'));hidden.slice(0,6).forEach(function(card){card.hidden=false;});var left=Math.max(0,hidden.length-6);more.hidden=left===0;more.textContent='Load '+Math.min(6,left)+' more';more.setAttribute('aria-expanded','true');return;}var t=e.target.closest('.tabs button');if(t){var h=t.closest('.hub-inner'),n=t.getAttribute('data-t');h.querySelectorAll('.tabs button').forEach(function(b){var active=b.getAttribute('data-t')===n;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});h.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-p')===n);});var sc=h.closest('.hub');if(sc)sc.scrollTop=0;}});
           `,
         }}
       ></script>

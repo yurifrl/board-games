@@ -195,6 +195,9 @@ app.get("/auth/google", async (c) => {
   if (!googleConfigured()) return renderHome(c, { error: "Google sign-in isn't configured." }, 500);
   const state = randomBytes(16).toString("hex");
   setCookie(c, "g_state", state, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
+  // Remember the slot they were claiming so we can auto-join it after approval.
+  const slot = c.req.query("slot");
+  if (slot) setCookie(c, "g_slot", slot, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
   return c.redirect(googleAuthUrl(`${BASE_URL}/auth/google/callback`, state));
 });
 
@@ -212,8 +215,21 @@ app.get("/auth/google/callback", async (c) => {
   // Always issue the session (identity is proven); permission is gated by member status.
   setSessionCookie(c, await issueSessionToken(SECRET, id.email, SESSION_TTL_DAYS * 86400, { google: true }));
 
+  // The slot they clicked "I want to play" on before logging in (if any).
+  const wantSlot = getCookie(c, "g_slot");
+  if (wantSlot) deleteCookie(c, "g_slot", { path: "/" });
+
   const existing = await getMember(DATA_DIR, id.email);
-  if (existing?.status === "approved") return c.redirect("/");
+  if (existing?.status === "approved") {
+    // Auto-claim the date they came in to book.
+    if (wantSlot) {
+      const slot = await getSlotView(DATA_DIR, wantSlot);
+      if (slot && !(await isJoined(DATA_DIR, slot.id, id.email))) {
+        await joinSlot(DATA_DIR, { slotId: slot.id, phone: id.email, name: id.name });
+      }
+    }
+    return c.redirect("/");
+  }
   if (existing?.status === "denied") return c.html(deniedPage(), 403);
 
   // First time (or still pending): record + ping the owner (throttled, no LLM).
