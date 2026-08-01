@@ -38,11 +38,11 @@ export function buildAssetRoutes(service: AssetService): Hono {
   // Browser: signed URL, resize params allowed.
   app.get("/asset/:entity/:kind/:source/:file", async (c) => {
     const key = keyFrom(c);
-    if (!key) return c.text("bad key", 400);
+    if (!key) return c.text("Chave inválida", 400);
     const query = new URL(c.req.url).searchParams;
-    if (!verifySigned(keyPath(key), query)) return c.text("bad signature", 401);
+    if (!verifySigned(keyPath(key), query)) return c.text("Assinatura inválida", 401);
     const blob = await service.render(key, query);
-    if (!blob) return c.text("not found", 404);
+    if (!blob) return c.text("Não encontrado", 404);
     return respond(blob.bytes, blob.contentType);
   });
 

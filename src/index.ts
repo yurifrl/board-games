@@ -143,11 +143,11 @@ app.post("/auth/login", async (c) => {
   const email = String(form["email"] ?? "").trim().toLowerCase();
   const password = String(form["password"] ?? "");
   if (!email || !password) {
-    return renderHome(c, { error: "Email and password are required." }, 400);
+    return renderHome(c, { error: "E-mail e senha são obrigatórios." }, 400);
   }
   const perm = await authenticate(DATA_DIR, email, password);
   if (!perm) {
-    return renderHome(c, { error: "Invalid email or password." }, 401);
+    return renderHome(c, { error: "E-mail ou senha inválidos." }, 401);
   }
   setSessionCookie(c, await issueSessionToken(SECRET, perm.email, SESSION_TTL_DAYS * 86400));
   return c.redirect("/");
@@ -156,14 +156,14 @@ app.post("/auth/login", async (c) => {
 // Admin-only: record a temp user in the JSONL db and return their invite link.
 app.post("/admin/invite", async (c) => {
   const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
+  if (!perm?.admin) return c.text("Proibido", 403);
 
   const form = await c.req.parseBody();
   const email = String(form["email"] ?? "").trim().toLowerCase();
   const role = String(form["role"] ?? DEFAULT_INVITE_ROLE).trim();
-  if (!email) return c.text("Email is required", 400);
+  if (!email) return c.text("O e-mail é obrigatório", 400);
   if (role === "admin" || !(await rolesExist(DATA_DIR, [role]))) {
-    return c.text("Invalid role", 400);
+    return c.text("Perfil inválido", 400);
   }
 
   await upsertTmpUser(TMP_USERS_PATH, { email, roles: [role], createdBy: perm.email });
@@ -176,10 +176,10 @@ app.post("/admin/invite", async (c) => {
 app.get("/auth/invite", async (c) => {
   const token = c.req.query("token") ?? "";
   const invite = await verifyInvite(SECRET, token);
-  if (!invite) return renderHome(c, { error: "That invite link is invalid." }, 401);
+  if (!invite) return renderHome(c, { error: "Este link de convite é inválido." }, 401);
 
   const tu = await getTmpUser(TMP_USERS_PATH, invite.email);
-  if (!tu) return renderHome(c, { error: "This invite has been revoked." }, 401);
+  if (!tu) return renderHome(c, { error: "Este convite foi revogado." }, 401);
 
   const session = await issueSessionToken(SECRET, invite.email, SESSION_TTL_DAYS * 86400, { tmp: true });
   setSessionCookie(c, session);
@@ -195,7 +195,7 @@ app.get("/auth/logout", (c) => {
 
 app.get("/auth/google", async (c) => {
   if (!googleConfigured())
-    return c.html(noticePage({ title: "Sign-in unavailable", message: "Google sign-in isn't set up yet. Ask the owner to finish configuring it." }), 503);
+    return c.html(noticePage({ title: "Login indisponível", message: "O login com o Google ainda não foi configurado. Peça ao responsável para concluir a configuração." }), 503);
   const state = randomBytes(16).toString("hex");
   setCookie(c, "g_state", state, { httpOnly: true, secure: SECURE, sameSite: "Lax", path: "/", maxAge: 600 });
   // Remember the game they wanted to play so we can send them to booking after approval.
@@ -208,12 +208,12 @@ app.get("/auth/google/callback", async (c) => {
   const state = c.req.query("state");
   const cookieState = getCookie(c, "g_state");
   deleteCookie(c, "g_state", { path: "/" });
-  if (!state || state !== cookieState) return renderHome(c, { error: "Sign-in expired, try again." }, 400);
+  if (!state || state !== cookieState) return renderHome(c, { error: "O login expirou. Tente novamente." }, 400);
 
   const code = c.req.query("code");
   if (!code) return c.redirect("/");
   const id = await exchangeCode(code, `${BASE_URL}/auth/google/callback`);
-  if (!id || !id.emailVerified) return renderHome(c, { error: "Could not verify your Google account." }, 401);
+  if (!id || !id.emailVerified) return renderHome(c, { error: "Não foi possível verificar sua conta do Google." }, 401);
 
   // Always issue the session (identity is proven); permission is gated by member status.
   setSessionCookie(c, await issueSessionToken(SECRET, id.email, SESSION_TTL_DAYS * 86400, { google: true }));
@@ -244,13 +244,13 @@ app.get("/auth/google/callback", async (c) => {
 // Admin: review member requests, approve/deny.
 app.get("/admin/requests", async (c) => {
   const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
+  if (!perm?.admin) return c.text("Proibido", 403);
   return c.html(membersAdminPage({ members: await listMembers(DATA_DIR) }));
 });
 
 app.post("/admin/requests/approve", async (c) => {
   const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
+  if (!perm?.admin) return c.text("Proibido", 403);
   const form = await c.req.parseBody();
   const email = normEmail(String(form["email"] ?? ""));
   if (email) await approveMember(DATA_DIR, email);
@@ -259,7 +259,7 @@ app.post("/admin/requests/approve", async (c) => {
 
 app.post("/admin/requests/deny", async (c) => {
   const perm = await currentUser(c);
-  if (!perm?.admin) return c.text("Forbidden", 403);
+  if (!perm?.admin) return c.text("Proibido", 403);
   const form = await c.req.parseBody();
   const email = normEmail(String(form["email"] ?? ""));
   if (email) await denyMember(DATA_DIR, email);
@@ -272,7 +272,7 @@ app.post("/admin/requests/deny", async (c) => {
 app.get("/slot/:id", async (c) => {
   const perm = await currentUser(c);
   const slot = await getSlotView(DATA_DIR, c.req.param("id"));
-  if (!slot) return c.notFound();
+  if (!slot) return c.text("Não encontrado", 404);
   const mine = !!perm && slot.players.includes(perm.email.toLowerCase());
   return c.html(slotPage({ slot, authed: !!perm, mine }));
 });
@@ -282,7 +282,7 @@ app.get("/game/:id/play", async (c) => {
   const perm = await currentUser(c);
   if (!perm) return c.redirect(`/auth/google?game=${encodeURIComponent(c.req.param("id"))}`);
   const game = (await loadGames(DATA_DIR)).find((g) => g.id === c.req.param("id"));
-  if (!game) return c.notFound();
+  if (!game) return c.text("Não encontrado", 404);
   const blocks = await openBlocks(DATA_DIR);
   return c.html(bookingPage({ game, blocks }));
 });
@@ -292,7 +292,7 @@ app.post("/game/:id/book", async (c) => {
   const perm = await currentUser(c);
   if (!perm) return c.redirect("/");
   const game = (await loadGames(DATA_DIR)).find((g) => g.id === c.req.param("id"));
-  if (!game) return c.notFound();
+  if (!game) return c.text("Não encontrado", 404);
   const form = await c.req.parseBody();
   const blockId = String(form["blockId"] ?? "");
   const start = String(form["start"] ?? "");
@@ -365,7 +365,7 @@ app.get("/mock.html", async () => {
 // Browser reads via signed URLs; agents read + ingest via the shared token.
 const assets = buildAssetPlatform({
   dataDir: DATA_DIR,
-  ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
+  ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN") || env("LUDOPEDIA_ACESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
 });
 app.route("/", assets.serve);
 app.route("/", assets.ingest);

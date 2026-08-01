@@ -34,7 +34,7 @@ const youtubeThumbnail = (url: string): string | undefined => {
   const id = youtubeId(url);
   return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : undefined;
 };
-const dateLabel = (timestamp: number): string => new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(timestamp));
+const dateLabel = (timestamp: number): string => new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(timestamp));
 
 function bggLinks(xml: string, type: string): { id: string; name: string; inbound?: string }[] {
   return [...xml.matchAll(/<link\b[^>]*>/g)].flatMap((match) => {
@@ -49,7 +49,7 @@ function bggVideos(xml: string): Media[] {
     const url = safeUrl(video.link);
     if (!url) return [];
     return [{
-      title: video.title || "BGG video",
+      title: video.title || "Vídeo do BGG",
       url,
       thumbnail: youtubeThumbnail(url),
       meta: [video.category, video.language].filter(Boolean).join(" · "),
@@ -63,7 +63,7 @@ function bggEditions(xml: string): Edition[] {
     const body = match[1];
     const name = [...body.matchAll(/<name\b[^>]*>/g)].map((item) => xmlAttrs(item[0])).find((item) => item.type === "primary")?.value
       ?? xmlAttrs(body.match(/<name\b[^>]*>/)?.[0] ?? "").value
-      ?? "Edition";
+      ?? "Edição";
     const language = bggLinks(body, "language")[0]?.name;
     const publisher = bggLinks(body, "boardgamepublisher")[0]?.name;
     return {
@@ -96,7 +96,7 @@ function ludopediaMedia(value: unknown, kind: "video" | "image" | "file"): Media
   return records(value).flatMap((record) => {
     const url = absoluteLudopedia(field(record, urls));
     if (!url) return [];
-    const title = field(record, ["titulo", "title", "nm_video", "nm_imagem", "nm_arquivo", "nome", "descricao"]) ?? (kind === "file" ? "Download" : kind === "video" ? "Video" : "Image");
+    const title = field(record, ["titulo", "title", "nm_video", "nm_imagem", "nm_arquivo", "nome", "descricao"]) ?? (kind === "file" ? "Baixar" : kind === "video" ? "Vídeo" : "Imagem");
     const thumb = absoluteLudopedia(field(record, ["thumb", "thumbnail", "imagem", "url_imagem"]));
     return [{ title, url, thumbnail: kind === "video" ? thumb ?? youtubeThumbnail(url) : thumb ?? (kind === "image" ? url : undefined), meta: field(record, ["categoria", "idioma", "usuario", "autor"]) }];
   });
@@ -104,18 +104,18 @@ function ludopediaMedia(value: unknown, kind: "video" | "image" | "file"): Media
 
 const FactStrip: FC<{ facts: ProviderFacts }> = ({ facts }) => {
   const values = [
-    ["Players", facts.minPlayers && facts.maxPlayers ? `${facts.minPlayers}–${facts.maxPlayers}` : facts.minPlayers ?? facts.maxPlayers],
-    ["Time", facts.playTime ? `${facts.playTime} min` : undefined],
-    ["Age", facts.minAge ? `${facts.minAge}+` : undefined],
-    ["Complexity", facts.complexity ? `${facts.complexity.toFixed(2)} / 5` : undefined],
+    ["Jogadores", facts.minPlayers && facts.maxPlayers ? `${facts.minPlayers}–${facts.maxPlayers}` : facts.minPlayers ?? facts.maxPlayers],
+    ["Tempo", facts.playTime ? `${facts.playTime} min` : undefined],
+    ["Idade", facts.minAge ? `${facts.minAge}+` : undefined],
+    ["Complexidade", facts.complexity ? `${facts.complexity.toFixed(2)} / 5` : undefined],
   ].filter(([, value]) => value !== undefined);
   return <div class="provider-fact-strip">{values.map(([label, value]) => <div><span>{label}</span><strong>{value}</strong></div>)}</div>;
 };
 
 const Score: FC<{ facts: ProviderFacts }> = ({ facts }) => facts.rating || facts.rank ? (
   <div class="provider-score">
-    {facts.rating ? <div><strong>{facts.rating.toFixed(1)}</strong><span>rating</span></div> : null}
-    {facts.rank ? <div><strong>#{facts.rank}</strong><span>BGG rank</span></div> : null}
+    {facts.rating ? <div><strong>{facts.rating.toFixed(1)}</strong><span>avaliação</span></div> : null}
+    {facts.rank ? <div><strong>#{facts.rank}</strong><span>ranking BGG</span></div> : null}
   </div>
 ) : null;
 
@@ -125,12 +125,12 @@ const Chips: FC<{ title: string; values: string[] }> = ({ title, values }) => va
 
 const VIDEO_PAGE_SIZE = 6;
 const VideoGrid: FC<{ videos: Media[] }> = ({ videos }) => videos.length ? (
-  <section class="provider-section" data-video-section=""><h3>Videos</h3><div class="provider-video-grid">{videos.map((video, index) => (
+  <section class="provider-section" data-video-section=""><h3>Vídeos</h3><div class="provider-video-grid">{videos.map((video, index) => (
     <a class={`provider-video-card${index >= VIDEO_PAGE_SIZE ? " provider-video-extra" : ""}`} data-video-extra={index >= VIDEO_PAGE_SIZE ? "" : undefined} hidden={index >= VIDEO_PAGE_SIZE} href={video.url} target="_blank" rel="noopener">
       <div class="provider-video-image">{video.thumbnail ? <img src={video.thumbnail} alt="" loading="lazy" /> : <span>▶</span>}<i>▶</i></div>
       <strong>{video.title}</strong>{video.meta ? <small>{video.meta}</small> : null}
     </a>
-  ))}</div>{videos.length > VIDEO_PAGE_SIZE ? <button class="provider-video-more" data-video-more="" type="button" aria-expanded="false">Load {Math.min(VIDEO_PAGE_SIZE, videos.length - VIDEO_PAGE_SIZE)} more</button> : null}</section>
+  ))}</div>{videos.length > VIDEO_PAGE_SIZE ? <button class="provider-video-more" data-video-more="" type="button" aria-expanded="false">Carregar mais {Math.min(VIDEO_PAGE_SIZE, videos.length - VIDEO_PAGE_SIZE)}</button> : null}</section>
 ) : null;
 
 const ImageGrid: FC<{ title: string; images: Media[] }> = ({ title, images }) => images.length ? (
@@ -140,7 +140,7 @@ const ImageGrid: FC<{ title: string; images: Media[] }> = ({ title, images }) =>
 ) : null;
 
 const FileList: FC<{ files: Media[] }> = ({ files }) => files.length ? (
-  <section class="provider-section"><h3>Files</h3><div class="provider-file-list">{files.map((file) => <a href={file.url} target="_blank" rel="noopener"><span>⇩</span><strong>{file.title}</strong></a>)}</div></section>
+  <section class="provider-section"><h3>Arquivos</h3><div class="provider-file-list">{files.map((file) => <a href={file.url} target="_blank" rel="noopener"><span>⇩</span><strong>{file.title}</strong></a>)}</div></section>
 ) : null;
 
 const SourceHeader: FC<{ provider: Provider; id: string; snapshot?: ProviderSnapshot; title?: string; image?: string; facts: ProviderFacts }> = ({ provider, id, snapshot, title, image, facts }) => {
@@ -151,15 +151,15 @@ const SourceHeader: FC<{ provider: Provider; id: string; snapshot?: ProviderSnap
       {image ? <img src={image} alt="" loading="lazy" /> : null}
       <div class="provider-header-main"><span class={`provider-mark ${provider}`}>{isBgg ? "BGG" : "LUDOPEDIA"}</span><h2>{title ?? (isBgg ? "BoardGameGeek" : "Ludopedia")}</h2>{facts.year ? <p>{facts.year}</p> : null}</div>
       <Score facts={facts} />
-      <a class="provider-open" href={href} target="_blank" rel="noopener">Open ↗</a>
-      {snapshot ? <small class="provider-freshness">Updated {dateLabel(snapshot.fetchedAt)}</small> : null}
+      <a class="provider-open" href={href} target="_blank" rel="noopener">Abrir ↗</a>
+      {snapshot ? <small class="provider-freshness">Atualizado em {dateLabel(snapshot.fetchedAt)}</small> : null}
     </header>
   );
 };
 
 const EmptyProvider: FC<{ provider: Provider; id: string }> = ({ provider, id }) => {
   const facts = { mechanics: [], categories: [], designers: [], publishers: [] };
-  return <><SourceHeader provider={provider} id={id} facts={facts} /><div class="provider-empty"><strong>Provider data has not been fetched yet.</strong><span>Run the worker with this provider's API token configured.</span></div></>;
+  return <><SourceHeader provider={provider} id={id} facts={facts} /><div class="provider-empty"><strong>Os dados do provedor ainda não foram obtidos.</strong><span>Configure o acesso à API do provedor e execute a sincronização.</span></div></>;
 };
 
 const BggPane: FC<{ id: string; snapshot?: ProviderSnapshot }> = ({ id, snapshot }) => {
@@ -172,7 +172,7 @@ const BggPane: FC<{ id: string; snapshot?: ProviderSnapshot }> = ({ id, snapshot
   const videos = bggVideos(xml);
   const editions = bggEditions(xml);
   const images: Media[] = [];
-  if (image) images.push({ title: title ?? "Game image", url: safeUrl(xmlText(xml, "image")) ?? image, thumbnail: image });
+  if (image) images.push({ title: title ?? "Imagem do jogo", url: safeUrl(xmlText(xml, "image")) ?? image, thumbnail: image });
   for (const edition of editions) if (edition.image) images.push({ title: edition.title, url: edition.image, thumbnail: edition.image, meta: edition.meta });
   const designers = bggLinks(xml, "boardgamedesigner").map((link) => link.name);
   const artists = bggLinks(xml, "boardgameartist").map((link) => link.name);
@@ -181,16 +181,16 @@ const BggPane: FC<{ id: string; snapshot?: ProviderSnapshot }> = ({ id, snapshot
   return <>
     <SourceHeader provider="bgg" id={id} snapshot={snapshot} title={title} image={image} facts={facts} />
     <FactStrip facts={facts} />
-    {description ? <section class="provider-section provider-about"><h3>About</h3><p>{description}</p></section> : null}
+    {description ? <section class="provider-section provider-about"><h3>Sobre</h3><p>{description}</p></section> : null}
     <section class="provider-columns">
-      <Chips title="Mechanics" values={facts.mechanics} /><Chips title="Categories" values={facts.categories} />
-      <Chips title="Designers" values={designers} /><Chips title="Artists" values={artists} /><Chips title="Publishers" values={publishers} />
+      <Chips title="Mecânicas" values={facts.mechanics} /><Chips title="Categorias" values={facts.categories} />
+      <Chips title="Designers" values={designers} /><Chips title="Artistas" values={artists} /><Chips title="Editoras" values={publishers} />
     </section>
     <VideoGrid videos={videos} />
-    <ImageGrid title="Images & editions" images={images} />
-    {editions.length ? <section class="provider-section"><h3>Editions</h3><div class="provider-editions">{editions.map((edition) => <article>{edition.image ? <img src={edition.image} alt="" loading="lazy" /> : null}<div><strong>{edition.title}</strong><small>{edition.meta}</small></div></article>)}</div></section> : null}
-    {related.length ? <section class="provider-section"><h3>Related games</h3><div class="provider-related">{related.map((item) => <a href={`https://boardgamegeek.com/boardgame/${item.id}`} target="_blank" rel="noopener"><strong>{item.name}</strong><small>{item.inbound === "true" ? "Expansion for this game" : "Expansion"}</small></a>)}</div></section> : null}
-    <section class="provider-section"><h3>More on BGG</h3><div class="provider-actions"><a href={`https://boardgamegeek.com/boardgame/${id}/-/images`} target="_blank" rel="noopener">Image gallery ↗</a><a href={`https://boardgamegeek.com/boardgame/${id}/-/videos/all`} target="_blank" rel="noopener">All videos ↗</a><a href={`https://boardgamegeek.com/boardgame/${id}/-/files`} target="_blank" rel="noopener">Community files ↗</a></div></section>
+    <ImageGrid title="Imagens e edições" images={images} />
+    {editions.length ? <section class="provider-section"><h3>Edições</h3><div class="provider-editions">{editions.map((edition) => <article>{edition.image ? <img src={edition.image} alt="" loading="lazy" /> : null}<div><strong>{edition.title}</strong><small>{edition.meta}</small></div></article>)}</div></section> : null}
+    {related.length ? <section class="provider-section"><h3>Jogos relacionados</h3><div class="provider-related">{related.map((item) => <a href={`https://boardgamegeek.com/boardgame/${item.id}`} target="_blank" rel="noopener"><strong>{item.name}</strong><small>{item.inbound === "true" ? "Expansão deste jogo" : "Expansão"}</small></a>)}</div></section> : null}
+    <section class="provider-section"><h3>Mais no BGG</h3><div class="provider-actions"><a href={`https://boardgamegeek.com/boardgame/${id}/-/images`} target="_blank" rel="noopener">Galeria de imagens ↗</a><a href={`https://boardgamegeek.com/boardgame/${id}/-/videos/all`} target="_blank" rel="noopener">Todos os vídeos ↗</a><a href={`https://boardgamegeek.com/boardgame/${id}/-/files`} target="_blank" rel="noopener">Arquivos da comunidade ↗</a></div></section>
   </>;
 };
 
@@ -211,9 +211,9 @@ const LudopediaPane: FC<{ id: string; snapshot?: ProviderSnapshot }> = ({ id, sn
     {description ? <section class="provider-section provider-about"><h3>Sobre</h3><p>{description}</p></section> : null}
     <section class="provider-columns"><Chips title="Mecânicas" values={facts.mechanics} /><Chips title="Categorias" values={facts.categories} /><Chips title="Designers" values={facts.designers} /><Chips title="Editoras" values={facts.publishers} /></section>
     <VideoGrid videos={videos} />
-    <ImageGrid title="Images" images={images} />
+    <ImageGrid title="Imagens" images={images} />
     <FileList files={files} />
-    <section class="provider-section"><div class="provider-actions"><a href={`https://ludopedia.com.br/jogo/${id}`} target="_blank" rel="noopener">Open on Ludopedia ↗</a></div></section>
+    <section class="provider-section"><div class="provider-actions"><a href={`https://ludopedia.com.br/jogo/${id}`} target="_blank" rel="noopener">Abrir na Ludopedia ↗</a></div></section>
   </>;
 };
 
