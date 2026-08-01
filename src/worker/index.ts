@@ -106,7 +106,7 @@ async function cycle(): Promise<void> {
   const { service, sources } = buildAssetPlatform({
     dataDir: DATA_DIR,
     bgg: { bearerToken: env("BGG_BEARER_TOKEN") },
-    ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
+    ludopedia: { token: env("LUDOPEDIA_ACCESS_TOKEN") || env("LUDOPEDIA_ACESS_TOKEN"), cookie: env("LUDOPEDIA_COOKIE") },
   });
 
   // Catalog feeds assets/tint/slots. Each step is isolated so one failure
@@ -124,7 +124,7 @@ async function cycle(): Promise<void> {
     await step("provider-data", () => enrichProviderData(games, {
       dataDir: DATA_DIR,
       bggToken: env("BGG_BEARER_TOKEN"),
-      ludopediaToken: env("LUDOPEDIA_ACCESS_TOKEN"),
+      ludopediaToken: env("LUDOPEDIA_ACCESS_TOKEN") || env("LUDOPEDIA_ACESS_TOKEN"),
     }));
     await step("assets", () => syncAssets(games, service, sources));
     await step("tint", () => enrichTint(games, service));

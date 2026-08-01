@@ -28,7 +28,7 @@ export class LudopediaCoverSource implements AssetSource {
 
   async discover(e: Entity): Promise<DiscoveredAsset[]> {
     const id = e.ludopediaId ?? (await this.resolveId(e));
-    if (!id) return [];
+    if (!id || !/^\d+$/.test(String(id))) return [];
     const url = CAPAS(id);
     return [
       {
