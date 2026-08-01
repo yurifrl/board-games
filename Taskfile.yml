@@ -15,6 +15,13 @@ tasks:
     cmds:
       - SYNC_ONCE=1 bun run src/worker/index.ts
 
+  resync-covers:
+    desc: "One-shot sync that force re-pulls every cover from source (fixes stale/wrong art)"
+    deps: [envs:op]
+    dotenv: ['.env']
+    cmds:
+      - SYNC_ONCE=1 RESYNC_COVERS=1 bun run src/worker/index.ts
+
   worker:
     desc: "Worker sidecar: poll Obsidian and keep the volume in sync"
     deps: [envs:op]

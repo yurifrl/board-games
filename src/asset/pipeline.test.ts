@@ -57,6 +57,18 @@ test("unchanged fingerprint is not refetched; changed one is", async () => {
   expect(r2[0].outcome).toBe("stored");
 });
 
+test("force re-pulls even when the fingerprint is unchanged", async () => {
+  const svc = service();
+  const s1 = source("bgg", "fp1");
+  await runPipeline([entity], [s1], svc);
+  expect(s1.fetches).toBe(1);
+
+  const same = source("bgg", "fp1");
+  const r = await runPipeline([entity], [same], svc, undefined, { force: true });
+  expect(same.fetches).toBe(1); // refetched despite matching fingerprint
+  expect(r[0].outcome).toBe("stored");
+});
+
 test("a rate-limited source is deferred without dropping the others", async () => {
   const svc = service();
   const flaky: AssetSource = {

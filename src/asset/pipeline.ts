@@ -15,13 +15,16 @@ export interface PipelineResult {
  * branches: it loops the registered sources, asks each what it can provide, and
  * stores anything new or changed. Each source is hit at most once per asset
  * (fingerprint compare); a temporarily-unavailable source is deferred without
- * affecting the others.
+ * affecting the others. With `force`, the fingerprint check is skipped so every
+ * asset is re-pulled from source and overwritten — the manual "fix everything"
+ * path for stale/wrong covers.
  */
 export async function runPipeline(
   entities: Entity[],
   sources: AssetSource[],
   service: AssetService,
   onResult?: (r: PipelineResult) => void,
+  opts: { force?: boolean } = {},
 ): Promise<PipelineResult[]> {
   const out: PipelineResult[] = [];
   const record = (r: PipelineResult) => {
@@ -40,7 +43,7 @@ export async function runPipeline(
       }
       for (const asset of discovered) {
         try {
-          if (!(await service.needsUpdate(asset.key, asset.fingerprint))) {
+          if (!opts.force && !(await service.needsUpdate(asset.key, asset.fingerprint))) {
             record({ entity: e.id, source: source.id, kind: asset.key.kind, outcome: "unchanged" });
             continue;
           }

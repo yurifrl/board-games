@@ -41,12 +41,14 @@ const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) =
 export const doc = (el: { toString(): string }): string => "<!doctype html>" + el.toString();
 export { Layout };
 
+// Tinted title-card placeholder shows when a game has no cover source or the
+// image 404s (onerror drops the img, revealing the card underneath).
 const CoverImg: FC<{ g: Game; cls: string; w?: number; h?: number }> = ({ g, cls, w, h }) => {
   const src = coverSrc(g, w, h);
-  return src ? (
-    <img class={cls} src={src} alt={g.name} loading="lazy" />
-  ) : (
-    <div class={cls} style="display:grid;place-items:center;font-size:64px">🎲</div>
+  return (
+    <span class={`${cls} cover-ph`} style={`--tint:${g.tint ?? "#3a3a44"}`} data-name={g.name}>
+      {src ? <img src={src} alt={g.name} loading="lazy" onerror="this.remove()" /> : null}
+    </span>
   );
 };
 

@@ -26,6 +26,7 @@ const OBSIDIAN_USERS_NOTE = env("OBSIDIAN_USERS_NOTE", "Yuri/Resources/Board Gam
 const DATA_DIR = env("DATA_DIR", "./data");
 const SYNC_INTERVAL_MS = Number(env("SYNC_INTERVAL_MS", "300000"));
 const SYNC_ONCE = env("SYNC_ONCE") === "1";
+const FORCE_RESYNC = env("RESYNC_COVERS") === "1";
 
 const slugOf = (url?: string) => url?.match(/jogo\/([^/?#]+)/)?.[1]?.toLowerCase();
 
@@ -70,11 +71,20 @@ async function syncUsers(): Promise<void> {
 
 async function syncAssets(games: Game[], service: AssetService, sources: import("../asset/types.ts").AssetSource[]): Promise<void> {
   const tally: Record<string, number> = {};
+  const problems: string[] = [];
   await runPipeline(games.map(toEntity), sources, service, (r) => {
     tally[r.outcome] = (tally[r.outcome] ?? 0) + 1;
     if (r.outcome === "stored") console.log(`  stored   ${r.entity} <- ${r.source}/${r.kind}`);
-  });
-  console.log(`  assets: ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+    if (r.outcome === "failed" || r.outcome === "deferred") problems.push(`  ${r.outcome.toUpperCase()} ${r.entity} <- ${r.source}/${r.kind}`);
+  }, { force: FORCE_RESYNC });
+  console.log(`  assets: ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(" ")}${FORCE_RESYNC ? " (forced)" : ""}`);
+  if (problems.length) {
+    console.error(`  ⚠ ${problems.length} cover(s) not updated — these keep serving stale/wrong art:`);
+    problems.forEach((p) => console.error(p));
+    // Fail a one-shot run so CI / a manual `task sync` surfaces the breakage
+    // (a bad BGG token or rate-limit) instead of swallowing it into a tally.
+    if (SYNC_ONCE && tally.failed) process.exitCode = 1;
+  }
 }
 
 /** Enrich each game with its cover's dominant color, read from the stored cover. */
