@@ -71,11 +71,15 @@ export function parseFrontmatter(raw: string): { fm: Record<string, unknown>; bo
         : [];
       continue;
     }
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+    const quoted = (val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"));
+    if (quoted) {
       val = val.slice(1, -1);
+      fm[key] = val;
+      continue;
     }
     if (val === "true") fm[key] = true;
     else if (val === "false") fm[key] = false;
+    else if (val === "null" || val === "~" || val === "") fm[key] = null;
     else fm[key] = val;
   }
   return { fm, body };
