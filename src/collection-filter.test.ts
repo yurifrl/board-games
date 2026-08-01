@@ -43,6 +43,27 @@ describe("collection filters", () => {
     expect(css).toContain(".notes-document table { width:100%; margin:18px 0; border-collapse:collapse; display:block; overflow-x:auto;");
   });
 
+  test("reveals decorative expansion tags from the base game label", async () => {
+    const html = render([game], [
+      { ...game, id: "marine-worlds", name: "Marine Worlds", type: "expansion", expansionOf: game.name },
+      { ...game, id: "zoo-map-pack", name: "Zoo Map Pack", type: "expansion", expansionOf: game.name },
+    ]);
+    const boxStart = html.indexOf('class="box has-expansions"');
+    const boxHtml = html.slice(boxStart, html.indexOf("</a>", boxStart));
+    const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
+
+    expect(boxStart).toBeGreaterThan(-1);
+    expect(boxHtml).toContain('href="#g-ark-nova"');
+    expect(boxHtml).toContain('class="expansion-mark"');
+    expect(boxHtml).toContain('class="expansion-tag"');
+    expect(boxHtml).toContain("Marine Worlds");
+    expect(boxHtml).toContain("Zoo Map Pack");
+    expect(html).toContain("IntersectionObserver");
+    expect(html).toContain("-35% 0px -35% 0px");
+    expect(css).toContain(".box:hover .expansion-tags, .box:focus-visible .expansion-tags, .box.exp-active .expansion-tags { pointer-events: auto; }");
+    expect(css).toContain("prefers-reduced-motion: reduce");
+  });
+
   test("breaks shelf labels after a colon", () => {
     const html = render([{ ...game, name: "Series: Subtitle" }]);
     expect(html).toContain('<span class="box-name">Series:<br/>Subtitle</span>');
@@ -181,10 +202,62 @@ describe("collection filters", () => {
     expect(html).toContain("Provider data has not been fetched yet.");
   });
 
-  test("renders searchable game metadata and mobile filter controls", () => {
+  test("makes only long filter groups searchable", async () => {
+    const games = Array.from({ length: 11 }, (_, index) => ({
+      ...game,
+      id: `game-${index}`,
+      name: `Game ${index}`,
+      facts: { designers: [`Designer ${index}`] },
+    }));
+    const html = render(games);
+    const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
+
+    expect(html).toContain('class="filter-choice filter-choice-long"');
+    expect(html).toContain('type="search" placeholder="Find designer…" aria-label="Search designer"');
+    expect(html).toContain('data-filter-options=""');
+    expect(html).toContain("optionSearches.forEach");
+    expect(html).toContain("label.hidden=");
+    expect(html).not.toContain('placeholder="Find type…"');
+    expect(css).toContain(".filter-choice-long .choice-options");
+    expect(css).toContain("overflow-y:scroll");
+    expect(css).toContain("flex-wrap:wrap");
+    expect(css).toContain(".filter-choice-long .choice-options::-webkit-scrollbar-thumb");
+  });
+
+  test("renders player presets and faceted filter controls", async () => {
+    const html = render([{ ...game, facts: { minPlayers: 1, maxPlayers: 20 } }]);
+    const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
+
+    expect(html).toContain('id="clear-panel-filters"');
+    expect(html).toContain('name="game-players" value="4+"');
+    expect(html).toContain('name="game-players" value="8+"');
+    expect(html).toContain('name="game-players" value="12+"');
+    expect(html).not.toContain('name="game-players" value="5"');
+    expect(html).toContain('data-filter-label="Any"');
+    expect(html).toContain("function updateFacets");
+    expect(html).toContain("function filterOptions");
+    expect(html).toContain("optionSearches.forEach(filterOptions)");
+    expect(html).toContain("querySelectorAll('.choice-options input')");
+    expect(html).toContain("querySelector('.choice-options input').checked=true");
+    expect(html).not.toContain("querySelector('input').checked=true");
+    expect(html).toContain("radio.disabled=");
+    expect(html).toContain("value.endsWith('+')");
+    expect(html).toContain("dataset.wasChecked");
+    expect(html).toContain("e.preventDefault()");
+    expect(css).toContain("input:disabled + span");
+  });
+
+  test("renders searchable game metadata and mobile filter controls", async () => {
     const html = render([game]);
+    const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
 
     expect(html).toContain('id="filter-toggle"');
+    expect(html.indexOf('id="game-search"')).toBeLessThan(html.indexOf('id="filter-toggle"'));
+    expect(html).toContain('id="search-open"');
+    expect(css).toContain(".collection-bar { position:sticky;");
+    expect(css).toContain(".search-shell.open .search-box { display:flex; }");
+    expect(css).toContain(".filter-grid { display:grid; grid-template-columns:1fr;");
+    expect(css).not.toContain(".filter-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }");
     expect(html).toContain('id="filter-backdrop"');
     expect(html).toContain('id="filter-panel"');
     expect(html).not.toContain('<div class="title">🎲 Collection</div>');
@@ -197,7 +270,23 @@ describe("collection filters", () => {
     expect(html).toContain('type="radio"');
     expect(html).not.toContain('<select id="game-playtime">');
     expect(html).toContain('id="game-played"');
-    expect(html).toContain('id="game-sort"');
+    expect(html).toContain('id="game-sort" class="sort-section"');
+    expect(html).toContain('name="game-sort" value="newest"');
+    expect(html).toContain('name="game-sort" value="playtime-asc"');
+    expect(html).not.toContain('<select id="game-sort">');
+    expect(html).toContain('class="filter-section-head"');
+    expect(html).toContain("function positionFilterPanel");
+    expect(html).toContain("rect.bottom+12");
+    expect(html).not.toContain("innerHeight-320");
+    expect(html).toContain("filterClose.focus()");
+    expect(html).toContain("filterToggle.focus()");
+    expect(html).toContain("if(e.key!=='Tab')");
+    expect(html).toContain('input[type="radio"]:checked');
+    expect(html).toContain("if(e.key==='Escape'&&!panel.hidden)");
+    expect(html).toContain("innerHeight-top+'px'");
+    expect(css).toContain("max-height:none");
+    expect(html).toContain('id="clear-panel-filters" type="button">Clear filters</button>');
+    expect(html).not.toContain("sort.querySelector('input').checked=true");
     expect(html).toContain('data-search="ark nova strategy animals base"');
     expect(html).toContain('data-playtime="120"');
     expect(html).toContain('data-played="yes"');
