@@ -1,0 +1,38 @@
+<style>
+  .icon-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:18px }
+  .icon-tile { aspect-ratio:1; display:grid; place-items:center; border-radius:18px; background:#f5f1e8; color:#25231f }
+  .icon-tile svg { width:68%; height:68%; overflow:visible }
+  .card { cursor:pointer }
+  .card-image { padding:22px; background:#fffdf8 }
+  .card[data-choice="b"] .icon-tile { color:#d85d3f }
+  .card[data-choice="c"] .icon-tile { color:#304f46 }
+</style>
+<h2>Which minimalist icon language fits the collection?</h2>
+<p class="subtitle">Same four subjects from your catalog: meeple, Camel Up camel, Exploding Kittens cat, and Flamecraft dragon. These are original simplified interpretations—not copied game artwork.</p>
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="icon-grid">
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="12" r="7"/><path d="M24 22h16l10 12-8 5-4-7v21H26V32l-4 7-8-5z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 45h42l-3-15-8-3-6-12-6 12H17l-7 8zM16 45v9m28-9v9m10-25 4-5"/><circle cx="47" cy="23" r="1" fill="currentColor"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 25 14 10l13 8h10l13-8-4 15c4 4 6 9 6 15 0 10-8 16-20 16S12 50 12 40c0-6 2-11 6-15Z"/><path d="m26 38 6 3 6-3m-6 3v5"/><circle cx="23" cy="32" r="1.5" fill="currentColor"/><circle cx="41" cy="32" r="1.5" fill="currentColor"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 48c-8-13 3-31 18-27 2-7 8-10 14-10-3 5-2 9 3 13-5 0-8 2-10 6 8 2 11 10 7 18-5 10-25 10-32 0Z"/><path d="M18 48c8-2 13-7 15-15m3-12-7-7"/><circle cx="43" cy="23" r="1.5" fill="currentColor"/></svg></div>
+    </div></div><div class="card-body"><h3>A — Fine outline</h3><p>Airy and elegant. Best as quiet decoration, but weaker at tiny sizes.</p></div>
+  </div>
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="icon-grid">
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="12" r="8"/><path d="M22 22h20l11 13-10 7-4-8v21H25V34l-4 8-10-7z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><path d="M8 46h47l-4-18-9-3-7-14-8 14H16l-8 10zm9 0h8v10h-8zm26 0h8v10h-8zm8-19 8-7-2 11z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><path fill-rule="evenodd" d="M17 24 13 8l15 9h8l15-9-4 16c5 5 7 10 7 17 0 11-9 17-22 17S10 52 10 41c0-7 2-12 7-17Zm7 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm16 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm-13 8 5 4 5-4-5 1z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><path d="M16 49C6 34 19 16 35 20c2-8 9-12 17-12-4 7-3 12 4 16-7 0-11 2-13 7 9 3 13 12 8 21-7 11-28 10-35-3Zm17-18c-3 9-8 15-17 18 8 2 19-5 20-17Z"/></svg></div>
+    </div></div><div class="card-body"><h3>B — Bold silhouette</h3><p>Playful and instantly readable. Strongest for sprinkling at small sizes.</p></div>
+  </div>
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image"><div class="icon-grid">
+      <div class="icon-tile"><svg viewBox="0 0 64 64"><g fill="currentColor"><circle cx="32" cy="12" r="7"/><path d="M23 22h18l11 13-9 6-5-8v21H26V33l-5 8-9-6z" opacity=".28"/><path d="M26 22h12v32H26z"/></g></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><path opacity=".28" d="M8 46h47l-4-18-9-3-7-14-8 14H16L8 35z"/><path d="M15 27h27l7 19H8V35zm2 19h8v10h-8zm26 0h8v10h-8zm8-19 8-7-2 11z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><path opacity=".28" d="M17 24 13 8l15 9h8l15-9-4 16c5 5 7 10 7 17 0 11-9 17-22 17S10 52 10 41c0-7 2-12 7-17Z"/><path d="M18 25c9-8 19-8 28 0l-5 29c-6 5-13 5-19 0zm4 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm18 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-13 8 5 4 5-4-5 1z"/></svg></div>
+      <div class="icon-tile"><svg viewBox="0 0 64 64" fill="currentColor"><path opacity=".28" d="M16 49C6 34 19 16 35 20c2-8 9-12 17-12-4 7-3 12 4 16-7 0-11 2-13 7 9 3 13 12 8 21-7 11-28 10-35-3Z"/><path d="M35 20c2-8 9-12 17-12-4 7-3 12 4 16-7 0-11 2-13 7 9 3 13 12 8 21-8-2-14-9-15-20-3 9-9 15-20 17 8-2 14-12 19-29Z"/></svg></div>
+    </div></div><div class="card-body"><h3>C — Soft two-tone</h3><p>More character and depth while staying simple, but needs color or opacity support.</p></div>
+  </div>
+</div>
+<p class="subtitle" style="margin-top:20px">Click the direction you prefer, or tell me what you want mixed between them.</p>

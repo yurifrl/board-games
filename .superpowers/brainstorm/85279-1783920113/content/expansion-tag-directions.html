@@ -1,0 +1,19 @@
+<style>
+.preview-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:18px}.direction{cursor:pointer;border:2px solid transparent;border-radius:16px;background:#16110e;padding:18px;transition:.2s}.direction:hover,.direction.selected{border-color:#a78bfa;transform:translateY(-2px)}.scene{height:320px;position:relative;display:grid;place-items:start center;padding-top:22px;border-radius:12px;background:linear-gradient(#2c231d,#17100c 82%,#79593c 83%,#3c281b 88%,#17100c 89%);overflow:hidden}.gamebox{width:135px;height:180px;display:grid;place-items:center;border-radius:3px;background:linear-gradient(145deg,#7357af,#282046);box-shadow:14px -8px 0 #191329,0 18px 30px #000b;color:white;font:800 24px/1.05 Georgia;text-align:center;transform:translateY(-14px) rotateY(-8deg)}.tag{position:absolute;top:220px;left:50%;translate:-50% 0;width:max-content;max-width:190px;padding:7px 18px;border:3px solid #8d6029;background:linear-gradient(135deg,#fff8df 0 46%,#ead7ad 52%);color:#2a2018;font-size:12px;font-weight:800;text-align:center;box-shadow:0 4px 5px #0009}.exp{position:absolute;left:50%;translate:-50% 0;width:max-content;max-width:205px;padding:6px 13px;border-radius:4px;font-size:11px;font-weight:750;box-shadow:0 4px 8px #0009}.a .tag{border-bottom-color:#8b5cf6}.a .tag:after{content:'2 EXPANSÕES';position:absolute;right:-10px;top:-13px;padding:3px 6px;border-radius:8px;background:#8b5cf6;color:#fff;font-size:8px}.a .e1{top:259px;background:#ded4ff;color:#2b1c50;transform:rotate(-2deg)}.a .e2{top:292px;background:#c4b5fd;color:#2b1c50;transform:rotate(2deg)}.b .tag{background:linear-gradient(135deg,#f0e3bc,#d8bd7d);border-color:#76501e}.b .tag:after{content:'✦';margin-left:8px;color:#7048c8}.b .e1,.b .e2{border:2px solid #8d6029;background:#fff8df;color:#2a2018}.b .e1{top:260px;transform:translateX(-16px) rotate(-3deg)}.b .e2{top:291px;transform:translateX(18px) rotate(3deg)}.c .tag{border-color:#6949ad}.c .tag:before{content:'EXP';margin-right:7px;padding:2px 5px;border-radius:3px;background:#6949ad;color:#fff;font-size:8px}.c .e1,.c .e2{left:56%;padding-left:18px;border-left:5px solid #8b5cf6;background:#241b33;color:#eee}.c .e1{top:260px}.c .e2{top:294px}@media(max-width:850px){.preview-grid{grid-template-columns:1fr}.scene{height:330px}}
+</style>
+<h2>Como identificar jogos com expansões?</h2>
+<p class="subtitle">Todos mostram o estado de hover: a caixa sobe e as etiquetas de expansão “caem” da etiqueta principal. Clique na direção visual que prefere.</p>
+<div class="preview-grid">
+  <div class="direction a" data-choice="a" onclick="toggleSelect(this)">
+    <div class="scene"><div class="gamebox">DUNE<br>IMPERIUM</div><div class="tag">Dune: Imperium</div><div class="exp e1">A Ascensão de Ix</div><div class="exp e2">Imortalidade</div></div>
+    <h3>A — Selo violeta</h3><p>A etiqueta normal ganha um contador evidente; expansões caem em etiquetas temáticas violetas.</p>
+  </div>
+  <div class="direction b" data-choice="b" onclick="toggleSelect(this)">
+    <div class="scene"><div class="gamebox">DUNE<br>IMPERIUM</div><div class="tag">Dune: Imperium</div><div class="exp e1">A Ascensão de Ix</div><div class="exp e2">Imortalidade</div></div>
+    <h3>B — Mesmo porta-etiqueta</h3><p>Uma pequena estrela diferencia o jogo; as expansões mantêm o latão e parecem etiquetas físicas soltas.</p>
+  </div>
+  <div class="direction c" data-choice="c" onclick="toggleSelect(this)">
+    <div class="scene"><div class="gamebox">DUNE<br>IMPERIUM</div><div class="tag">Dune: Imperium</div><div class="exp e1">A Ascensão de Ix</div><div class="exp e2">Imortalidade</div></div>
+    <h3>C — Marcador escuro</h3><p>A etiqueta principal mostra “EXP”; as expansões caem como pequenas fichas escuras.</p>
+  </div>
+</div>

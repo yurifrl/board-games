@@ -1,0 +1,40 @@
+<style>
+  .scene { position:relative; height:430px; overflow:hidden; border-radius:24px; background:#f7f2e8; color:#34312b }
+  .fake-page { position:absolute; inset:52px 48px; border-radius:18px; background:#fffdfa; box-shadow:0 18px 55px #5c49331c; padding:52px 58px }
+  .fake-page h4 { margin:0 0 10px; font:700 28px/1.1 system-ui; color:#25231f }
+  .fake-page p { width:62%; color:#8b8378; line-height:1.5 }
+  .toy { position:absolute; z-index:2; color:#d26343; filter:drop-shadow(0 6px 5px #56311b22) }
+  .toy svg { width:100%; height:100% }
+  .outline .toy { color:#33584d; filter:none }
+  .outline .toy svg { fill:none; stroke:currentColor; stroke-width:3; stroke-linejoin:round; stroke-linecap:round }
+  .label-note { margin-top:12px; color:#777; font-size:13px }
+</style>
+<h2>Free-roaming game toys, not an icon grid</h2>
+<p class="subtitle">Faceless, varied in scale, lightly rotated, and placed around content like physical pieces left on a table.</p>
+<div class="split">
+  <div class="mockup card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="mockup-header">A — Flat toy cutouts</div>
+    <div class="scene">
+      <div class="fake-page"><h4>Your game collection</h4><p>Pick something for the table. Browse old favorites and find the next game night.</p></div>
+      <div class="toy" style="width:72px;height:72px;left:18px;top:20px;transform:rotate(-13deg)"><svg viewBox="0 0 64 64" fill="currentColor"><circle cx="32" cy="12" r="8"/><path d="M22 22h20l11 13-10 7-4-8v21H25V34l-4 8-10-7z"/></svg></div>
+      <div class="toy" style="width:128px;height:128px;right:-20px;top:52px;transform:rotate(8deg);color:#d9a23d"><svg viewBox="0 0 64 64" fill="currentColor"><path d="M8 46h47l-4-18-9-3-7-14-8 14H16l-8 10zm9 0h8v10h-8zm26 0h8v10h-8zm8-19 8-7-2 11z"/></svg></div>
+      <div class="toy" style="width:52px;height:52px;left:17%;bottom:7px;transform:rotate(18deg);color:#365b50"><svg viewBox="0 0 64 64" fill="currentColor"><path d="M9 15 32 4l23 11-23 11zM9 15v30l23 15V26zm46 0v30L32 60V26z" opacity=".95"/><circle cx="22" cy="34" r="4" fill="#f7f2e8"/><circle cx="42" cy="21" r="4" fill="#f7f2e8"/></svg></div>
+      <div class="toy" style="width:94px;height:94px;right:17%;bottom:-15px;transform:rotate(-9deg);color:#5d73a5"><svg viewBox="0 0 64 64" fill="currentColor"><path d="M17 24 13 8l15 9h8l15-9-4 16c5 5 7 10 7 17 0 11-9 17-22 17S10 52 10 41c0-7 2-12 7-17Z"/></svg></div>
+      <div class="toy" style="width:46px;height:46px;right:36%;top:20px;transform:rotate(22deg);color:#8c5945"><svg viewBox="0 0 64 64" fill="currentColor"><path d="M16 8h32v10c0 10-5 18-12 22v9h11v7H17v-7h11v-9c-7-4-12-12-12-22zm-8 3h8v7h-2c0 6 3 10 8 12l-3 6C12 33 8 27 8 18zm48 0h-8v7h2c0 6-3 10-8 12l3 6c7-3 11-9 11-18z"/></svg></div>
+    </div>
+    <div class="card-body"><p>Chunky silhouettes feel like wooden pieces and stay readable from 40–140px.</p></div>
+  </div>
+  <div class="mockup card outline" data-choice="b" onclick="toggleSelect(this)">
+    <div class="mockup-header">B — Loose line toys</div>
+    <div class="scene">
+      <div class="fake-page"><h4>Your game collection</h4><p>Pick something for the table. Browse old favorites and find the next game night.</p></div>
+      <div class="toy" style="width:72px;height:72px;left:18px;top:20px;transform:rotate(-13deg)"><svg viewBox="0 0 64 64"><circle cx="32" cy="12" r="7"/><path d="M24 22h16l10 12-8 5-4-7v21H26V32l-4 7-8-5z"/></svg></div>
+      <div class="toy" style="width:128px;height:128px;right:-20px;top:52px;transform:rotate(8deg);color:#b78332"><svg viewBox="0 0 64 64"><path d="M10 45h42l-3-15-8-3-6-12-6 12H17l-7 8zM16 45v9m28-9v9m10-25 4-5"/></svg></div>
+      <div class="toy" style="width:52px;height:52px;left:17%;bottom:7px;transform:rotate(18deg)"><svg viewBox="0 0 64 64"><path d="m9 15 23-11 23 11-23 11zm0 0v30l23 15 23-15V15M32 26v34"/><circle cx="21" cy="34" r="3"/><circle cx="42" cy="20" r="3"/></svg></div>
+      <div class="toy" style="width:94px;height:94px;right:17%;bottom:-15px;transform:rotate(-9deg);color:#556b96"><svg viewBox="0 0 64 64"><path d="M17 24 13 8l15 9h8l15-9-4 16c5 5 7 10 7 17 0 11-9 17-22 17S10 52 10 41c0-7 2-12 7-17Z"/></svg></div>
+      <div class="toy" style="width:46px;height:46px;right:36%;top:20px;transform:rotate(22deg);color:#845744"><svg viewBox="0 0 64 64"><path d="M16 8h32v10c0 11-7 20-16 24-9-4-16-13-16-24zm16 34v9m-12 5h24M8 11h8m-8 0v7c0 8 5 14 12 17m36-24h-8m8 0v7c0 8-5 14-12 17"/></svg></div>
+    </div>
+    <div class="card-body"><p>Lighter and quieter, but looks more like illustration than physical toys.</p></div>
+  </div>
+</div>
+<p class="label-note">No faces or eyes. The cat is only a silhouette; every piece can be placed independently at any size.</p>
