@@ -70,6 +70,24 @@ spec:
           {{- end }}
         resources: {{ toYaml .Values.resources | nindent 10 }}
 ---
+# Periodic catalog sync every 5 minutes, independent of the obsidian trigger.
+# concurrencyPolicy + the WorkflowTemplate mutex keep it serialized against
+# sensor-triggered runs.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: {{ $fullname }}-sync-cron
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  schedules:
+    - "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  workflowSpec:
+    workflowTemplateRef:
+      name: board-games-sync
+---
 apiVersion: argoproj.io/v1alpha1
 kind: EventBus
 metadata:
