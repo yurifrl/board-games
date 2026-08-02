@@ -31,6 +31,10 @@ export type Game = {
   forSale: boolean;
   salePrice?: string;
   notes?: string;
+  /** Normal short (1-2 line) game description. */
+  description?: string;
+  /** Extra art-direction note for box-art generation. */
+  boxArtDescription?: string;
   facts?: ProviderFacts;
   providerData?: { bgg?: ProviderSnapshot; ludopedia?: ProviderSnapshot };
 };

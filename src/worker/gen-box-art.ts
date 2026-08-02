@@ -2,18 +2,18 @@
  * Isolated, manual box-art worker. Generates the flat-vector front + spine
  * faces for chosen games and stores them through the SAME asset service as the
  * regular sync — so when ASSETS_GCS_BUCKET is set this uploads to the private
- * GCS bucket, and otherwise writes the local disk cache. It is deliberately NOT
- * part of `bun run worker`: image generation is paid, so it only runs when you
- * invoke it.
+ * GCS bucket (and also mirrors a copy to the local disk cache), and otherwise
+ * writes the local disk cache only. It is deliberately NOT part of
+ * `bun run worker`: image generation is paid, so it only runs when you invoke it.
  *
  *   bun run gen-box-art <game-id> [<game-id> ...]   # specific games
  *   bun run gen-box-art --all                       # every game in the catalog
  *   bun run gen-box-art --name "Root" "Azul"        # match by name prefix
  *
- * Each game's art is themed from its REAL cover: the cover's dominant palette is
- * sampled and fed into the prompt, so generated faces match the actual box.
- * Fingerprints make it idempotent (skips unchanged unless STYLE_VERSION or the
- * palette changes). It prints a URL for every generated face.
+ * Every run REGENERATES and overwrites (pure override): generation is
+ * non-deterministic, so re-running always pulls fresh art. Each game's art is
+ * themed from its REAL cover — the cover's dominant palette is sampled and fed
+ * into the prompt. It prints a URL for every generated face.
  */
 import { Storage } from "@google-cloud/storage";
 import type { Game } from "../games.ts";
@@ -33,6 +33,23 @@ const BUCKET = env("ASSETS_GCS_BUCKET");
 
 const coverSource = (g: Game): "bgg" | "ludopedia" | null =>
   g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
+
+/** BGG's own game blurb (from the stored provider XML), cleaned and trimmed to a
+ * short 1-2 sentence line — the default description when a note doesn't set one. */
+function bggBlurb(g: Game): string | undefined {
+  const xml = g.providerData?.bgg?.data;
+  const m = typeof xml === "string" ? xml.match(/<description>([\s\S]*?)<\/description>/) : null;
+  if (!m) return undefined;
+  const text = m[1]
+    .replace(/&#10;|&#13;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&rsquo;|&apos;/g, "'")
+    .replace(/&mdash;/g, "\u2014").replace(/&ndash;/g, "\u2013")
+    .replace(/&[a-z0-9#]+;/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return undefined;
+  const sentences = text.match(/[^.!?]+[.!?]+/g)?.slice(0, 2).join(" ").trim();
+  const short = sentences || text;
+  return short.length > 240 ? short.slice(0, 240).replace(/\s+\S*$/, "") + "\u2026" : short;
+}
 
 /** Sample the game's real cover for a palette to theme its generated art. */
 async function coverPalette(g: Game, service: AssetService): Promise<string[]> {
@@ -80,7 +97,7 @@ console.log(`generating box art for ${chosen.length} game(s) → ${BUCKET ? `GCS
 
 const entities: Entity[] = [];
 for (const g of chosen) {
-  entities.push({ id: g.id, name: g.name, categories: g.facts?.categories, mechanics: g.facts?.mechanics, dims: g.siteSize, palette: await coverPalette(g, service) });
+  entities.push({ id: g.id, name: g.name, categories: g.facts?.categories, mechanics: g.facts?.mechanics, description: g.description ?? bggBlurb(g), artNote: g.boxArtDescription, dims: g.siteSize, palette: await coverPalette(g, service) });
 }
 
 const sources = buildGenSources({ apiKey });
@@ -91,7 +108,7 @@ await runPipeline(entities, sources, service, (r) => {
   const name = chosen.find((x) => x.id === r.entity)?.name ?? r.entity;
   console.log(`  ${r.outcome.padEnd(9)} ${r.kind.padEnd(5)} ${name}`);
   if (r.outcome === "stored" || r.outcome === "unchanged") touched.add(r.entity);
-});
+}, { force: true });
 
 console.log("\nURLs:");
 for (const id of touched) {

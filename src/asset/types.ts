@@ -52,6 +52,10 @@ export interface Entity {
   /** Theme signal for generated box art (from provider facts). */
   categories?: string[];
   mechanics?: string[];
+  /** Normal short game description (box-art prompt subject). */
+  description?: string;
+  /** Extra art-direction note for box-art generation. */
+  artNote?: string;
   /** Palette (`#rrggbb[]`) extracted from the real cover, to theme generated art. */
   palette?: string[];
   /** Physical box dimensions, for box-art aspect ratios + the 3D shelf. */

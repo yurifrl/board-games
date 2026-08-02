@@ -121,6 +121,8 @@ function mapGame(fm: Record<string, unknown>, body: string): Game | null {
     image: str(fm["image/grid"]),
     forSale: fm["for_sale"] === true || fm["for-sale"] === true,
     salePrice: str(fm["sale_price"]) ?? str(fm["sale-price"]),
+    description: str(fm["description"]),
+    boxArtDescription: str(fm["box-art/description"]) ?? str(fm["box-art-description"]),
     notes: body || undefined,
   };
 }

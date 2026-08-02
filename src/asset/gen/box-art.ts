@@ -40,8 +40,17 @@ export function themeHint(e: Entity): string {
   return bits.length ? bits.join(", ") : "abstract strategy board game";
 }
 
-export function facePrompt(face: Face, name: string, theme: string, palette?: string[]): string {
-  const style = styleWithPalette(palette);
+export interface FaceInput {
+  theme: string;
+  description?: string;
+  artNote?: string;
+  palette?: string[];
+}
+
+export function facePrompt(face: Face, name: string, input: FaceInput): string {
+  const style = styleWithPalette(input.palette);
+  const parts = [input.description, input.artNote].map((s) => s?.trim()).filter(Boolean);
+  const subject = parts.length ? `What it's about: ${parts.join(" ")}` : `Evoke its theme: ${input.theme}.`;
   if (face === "spine") {
     return (
       `ONLY a board game box SPINE — a single tall narrow rectangular strip, the ` +
@@ -49,12 +58,12 @@ export function facePrompt(face: Face, name: string, theme: string, palette?: st
       `the image and stands ALONE on a solid flat pure-white (#ffffff) background ` +
       `with nothing else: no scene, no feature icons, no list. On the strip: the ` +
       `vertical title "${name}" reading bottom-to-top and one small emblem at the ` +
-      `top. Theme hint: ${theme}. ${style}`
+      `top. ${subject} ${style}`
     );
   }
   return (
-    `Board game box FRONT COVER for the game titled "${name}". Evoke its theme: ` +
-    `${theme}. Iconic central illustration filling the frame, title clearly legible. ${style}`
+    `Board game box FRONT COVER for the game titled "${name}". ${subject} ` +
+    `Iconic central illustration filling the frame, title clearly legible. ${style}`
   );
 }
 
@@ -108,13 +117,13 @@ export class GenBoxArtSource implements AssetSource {
     if (!this.gen) return [];
     const theme = themeHint(e);
     const key = boxArtKey(e.id, this.kind);
-    const prompt = facePrompt(this.kind, e.name, theme, e.palette);
+    const prompt = facePrompt(this.kind, e.name, { theme, description: e.description, artNote: e.artNote, palette: e.palette });
     const ratio = aspectRatioFor(this.kind, e.dims);
     const isSpine = this.kind === "spine";
     return [
       {
         key,
-        fingerprint: `gen:${STYLE_VERSION}:${this.kind}:${e.name}|${theme}|${(e.palette ?? []).join(",")}`,
+        fingerprint: `gen:${STYLE_VERSION}:${this.kind}:${e.name}|${theme}|${e.description ?? ""}|${e.artNote ?? ""}|${(e.palette ?? []).join(",")}`,
         fetch: async () => {
           const raw = await this.gen!(prompt, ratio);
           // Spine stands alone on white — trim to just the strip so the shelf shows only the spine.

@@ -92,7 +92,10 @@ body::-webkit-scrollbar { display:none; }
   column-gap: var(--colgap);
   row-gap: var(--rowgap);
   padding: var(--pt) 40px calc(40px + env(safe-area-inset-bottom));
-  /* One wooden ledge at the bottom of every row track (repeats each pitch). */
+}
+/* One wooden ledge at the bottom of every row track (repeats each pitch), shared
+   by the box shelf and the spine bookshelf. */
+.shelf, body.view-spine .spines {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -109,6 +112,39 @@ body::-webkit-scrollbar { display:none; }
   background-position: 0 var(--pt);
 }
 .collection-tools + .shelf, .play-section + .shelf { --pt:32px; }
+
+/* Spine (bookshelf) view: narrow standing spines on the same wooden ledge. */
+.spines { display: none; }
+body.view-spine .shelf { display: none; }
+body.view-spine .spines {
+  --pt: calc(84px + env(safe-area-inset-top));
+  --spinew: 54px; --rowh: 340px; --rowgap: 66px; --board: 26px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--spinew));
+  grid-auto-rows: var(--rowh);
+  justify-content: center; align-items: end;
+  column-gap: 12px; row-gap: var(--rowgap);
+  padding: var(--pt) 40px calc(40px + env(safe-area-inset-bottom));
+}
+.collection-tools + .spines { --pt: 32px; }
+.spine {
+  position: relative; justify-self: center; align-self: end;
+  width: var(--spinew); height: calc(var(--rowh) - var(--board));
+  border-radius: 3px 3px 1px 1px; overflow: hidden; text-decoration: none;
+  background: var(--tint);
+  box-shadow: 0 6px 12px rgba(0,0,0,.38), inset 0 0 0 1px rgba(255,255,255,.06);
+  transition: transform .18s ease; will-change: transform;
+}
+.spine:hover, .spine:focus-visible { transform: translateY(-16px); z-index: 2; }
+.spine-name {
+  position: absolute; inset: 0; z-index: 0;
+  display: flex; align-items: center; justify-content: center;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  padding: 14px 0; color: #fff; font-weight: 700; font-size: 14px;
+  letter-spacing: .02em; line-height: 1.1; text-align: center;
+  text-shadow: 0 1px 2px rgba(0,0,0,.5); overflow: hidden;
+}
+.spine-art { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .box {
   position: relative; display: block; width: 250px; aspect-ratio: 3/4;

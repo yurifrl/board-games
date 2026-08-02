@@ -5,6 +5,7 @@ import type { Permission } from "./whitelist.ts";
 import type { SlotView } from "./slots.ts";
 import type { Member } from "./members.ts";
 import { sign } from "./asset/auth.ts";
+import { boxArtKey } from "./asset/box-contract.ts";
 import { ProviderPane } from "./provider-view.tsx";
 import { renderNote } from "./note-render.ts";
 
@@ -13,6 +14,12 @@ import { renderNote } from "./note-render.ts";
 export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400, h?: number): string {
   const key = { entity, kind: "cover", source, variant: "original", ext: "jpg" };
   return `/asset/${entity}/cover/${source}/original.jpg?${sign(key, { w, h })}`;
+}
+
+// Signed URL for a game's generated spine face. Missing art 404s and the <img>
+// drops itself (onerror), revealing the tinted default spine underneath.
+export function signedSpine(entity: string): string {
+  return `/asset/${entity}/spine/gen/original.png?${sign(boxArtKey(entity, "spine"))}`;
 }
 
 const coverSrc = (g: Game, w = 400, h?: number): string => {
@@ -156,6 +163,19 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
           </>
         ) : null}
       </span>
+    </a>
+  );
+};
+
+// Full-screen game hub, shown via :target when its box is tapped. Cover top-left,
+// One shelved spine (spine view). The tinted strip with the vertical name is the
+// default; the generated spine art covers it when present. Links to the same detail.
+const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
+  const g = grp.base;
+  return (
+    <a class="spine" href={`#g-${g.id}`} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
+      <span class="spine-name">{g.name}</span>
+      <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" onerror="this.remove()" />
     </a>
   );
 };
@@ -481,6 +501,7 @@ export function collectionPage(opts: {
     <Layout title="Coleção de jogos de tabuleiro">
       <div class="topbar collection-topbar">
         <div class="right">
+          <button id="view-toggle" class="btn view-toggle" type="button" aria-pressed="false">Lombadas</button>
           {perm.admin ? (
             <a class="btn" href="/admin/requests">Solicitações</a>
           ) : null}
@@ -508,6 +529,7 @@ export function collectionPage(opts: {
       <CollectionTools groups={groups} canFilterSale={canSeeSale(perm)} />
       <SlotsSection slots={slots} authed={isAuthed} mine={mineSlots} />
       <div class="shelf" style={shelfStyle}>{groups.map((grp) => <Box grp={grp} perm={perm} />)}</div>
+      <div class="spines">{groups.map((grp) => <Spine grp={grp} />)}</div>
       <div id="filter-empty" class="filter-empty" hidden><b>Nenhum jogo encontrado</b><span>Tente limpar um filtro ou buscar outra coisa.</span></div>
       {groups.map((grp) => <Detail grp={grp} perm={perm} whatsapp={whatsapp} />)}
       {perm.admin ? <InviteForm roles={roles} defaultRole={defaultRole} /> : null}
@@ -518,6 +540,7 @@ export function collectionPage(opts: {
       <script
         dangerouslySetInnerHTML={{
           __html: `
+            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.textContent=spine?'Estante':'Lombadas';}apply(localStorage.getItem('gameView')||'shelf');vt.addEventListener('click',function(){var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);});})();
             var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf');
             boxes.forEach(function(b){if(b.classList.contains('sized'))return;var i=b.querySelector('img');if(!i)return;var size=function(){if(i.naturalWidth)b.style.aspectRatio=i.naturalWidth+'/'+i.naturalHeight;};i.complete?size():i.addEventListener('load',size);});
             if(matchMedia('(hover: none), (pointer: coarse)').matches){var expansionObserver=new IntersectionObserver(function(entries){entries.forEach(function(entry){entry.target.classList.toggle('exp-active',entry.isIntersecting);});},{rootMargin:'-35% 0px -35% 0px'});boxes.filter(function(b){return b.classList.contains('has-expansions');}).forEach(function(b){expansionObserver.observe(b);});}

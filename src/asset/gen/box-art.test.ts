@@ -18,17 +18,23 @@ test("themeHint uses facts, falls back when none", () => {
 });
 
 test("prompts carry title + shared style; spine is a standalone strip on white", () => {
-  const p = facePrompt("front", "Nova", "space");
+  const p = facePrompt("front", "Nova", { theme: "space" });
   expect(p).toContain("Nova");
   expect(p).toContain(HOUSE_STYLE);
-  const spine = facePrompt("spine", "Nova", "space");
+  const spine = facePrompt("spine", "Nova", { theme: "space" });
   expect(spine).toContain("SPINE");
   expect(spine.toLowerCase()).toContain("white");
 });
 
 test("palette flows into the style clause; falls back to default", () => {
-  expect(facePrompt("front", "Nova", "x", ["#111111", "#222222"])).toContain("#111111, #222222");
-  expect(facePrompt("front", "Nova", "x")).toContain("#f2e9d0");
+  expect(facePrompt("front", "Nova", { theme: "x", palette: ["#111111", "#222222"] })).toContain("#111111, #222222");
+  expect(facePrompt("front", "Nova", { theme: "x" })).toContain("#f2e9d0");
+});
+
+test("description replaces the theme line", () => {
+  const p = facePrompt("front", "Nova", { theme: "space", description: "rival galaxies at war" });
+  expect(p).toContain("rival galaxies at war");
+  expect(p).not.toContain("Evoke its theme");
 });
 
 test("boxArtKey addresses the gen source per face", () => {
