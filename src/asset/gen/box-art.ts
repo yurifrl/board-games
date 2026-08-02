@@ -24,6 +24,8 @@ export const BASE_STYLE =
   "sides or thickness, no packaging, no shelf, no surrounding background, no " +
   "drop shadow. Bold geometric shapes, thick clean outlines, subtle paper " +
   "grain, no photorealism, no heavy gradients. Strong sans-serif title. " +
+  "Prefer scenery, architecture, objects and atmosphere; avoid depicting people " +
+  "or human figures, for a warm cozy mood. " +
   "Consistent board-game publisher house style.";
 
 /** Fallback palette when a game has no cover to sample. */
@@ -63,9 +65,11 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
       `product render, NO perspective, NO angle, NO box sides/edges/thickness, NO ` +
       `shadow. Inside the strip: an illustrated BACKGROUND scene evoking the game (do ` +
       `NOT copy the front cover), and over it in the FOREGROUND the game name ` +
-      `"${name}" in large bold vertical lettering reading bottom-to-top, spelled ` +
-      `exactly once, fully legible and NEVER obstructed, high contrast, running the ` +
-      `length of the strip. NO logo, NO emblem, NO icons. ${subject} ${style}`
+      `"${name}" ROTATED 90° to run vertically down the strip like a book-spine ` +
+      `title, reading TOP-TO-BOTTOM (sideways letters, NOT upright horizontal ` +
+      `text), spelled exactly once, large, bold, fully legible and NEVER ` +
+      `obstructed, high contrast, running the length of the strip. NO logo, NO ` +
+      `emblem, NO icons. ${subject} ${style}`
     );
   }
   return (

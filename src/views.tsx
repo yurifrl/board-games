@@ -19,7 +19,8 @@ export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400
 // Signed URL for a game's generated spine face. Missing art 404s and the <img>
 // drops itself (onerror), revealing the tinted default spine underneath.
 export function signedSpine(entity: string): string {
-  return `/asset/${entity}/spine/gen/original.png?${sign(boxArtKey(entity, "spine"))}`;
+  const key = boxArtKey(entity, "spine");
+  return `/asset/${entity}/spine/gen/${key.variant}.${key.ext}?${sign(key)}`;
 }
 
 const coverSrc = (g: Game, w = 400, h?: number): string => {

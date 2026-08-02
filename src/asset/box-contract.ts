@@ -27,7 +27,7 @@ export interface BoxDims {
 }
 
 /** Bump when {@link import("./box-art.ts").HOUSE_STYLE} or prompts change, to re-generate all art. */
-export const STYLE_VERSION = "v5";
+export const STYLE_VERSION = "v6";
 
 /** The stored format for generated box art. */
 export const BOX_ART_FORMAT = "png" as const;
@@ -41,9 +41,14 @@ export function faceDims(face: Face, d?: BoxDims): { w?: number; h?: number } {
   return { w: d?.depthCm, h: d?.heightCm }; // spine
 }
 
-/** The asset path both sides use — never hand-build a box-art URL elsewhere. */
+/**
+ * The asset path both sides use — never hand-build a box-art URL elsewhere.
+ * The filename is the {@link STYLE_VERSION}, so each version is a NEW object
+ * (`v6.png`) that never overwrites older ones, and the frontend — importing the
+ * same constant — always requests the current version.
+ */
 export function boxArtKey(entity: string, face: Face): AssetKey {
-  return { entity, kind: face, source: BOX_ART_SOURCE, variant: "original", ext: BOX_ART_FORMAT };
+  return { entity, kind: face, source: BOX_ART_SOURCE, variant: STYLE_VERSION, ext: BOX_ART_FORMAT };
 }
 
 /** Gemini's supported aspect ratios; a box face snaps to the nearest one. */

@@ -22,7 +22,7 @@ test("prompts carry title + shared style; spine is a standalone strip on white",
   expect(p).toContain("Nova");
   expect(p).toContain(HOUSE_STYLE);
   const spine = facePrompt("spine", "Nova", { theme: "space" });
-  expect(spine).toContain("SPINE");
+  expect(spine).toContain("STRIP");
   expect(spine.toLowerCase()).toContain("white");
 });
 
@@ -38,7 +38,7 @@ test("description replaces the theme line", () => {
 });
 
 test("boxArtKey addresses the gen source per face", () => {
-  expect(boxArtKey("g1", "front")).toEqual({ entity: "g1", kind: "front", source: "gen", variant: "original", ext: "png" });
+  expect(boxArtKey("g1", "front")).toEqual({ entity: "g1", kind: "front", source: "gen", variant: STYLE_VERSION, ext: "png" });
   expect(boxArtKey("g1", "spine").kind).toBe("spine");
 });
 
