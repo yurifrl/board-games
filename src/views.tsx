@@ -34,7 +34,7 @@ const SHELF_HEIGHT_CM = 30;
 const BOX_WIDTH_PX = 250;
 const cmToPx = (cm: number) => Math.round(cm * SHELF_HEIGHT_PX / SHELF_HEIGHT_CM * 100) / 100;
 
-const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
+const Layout: FC<PropsWithChildren<{ title: string; bodyClass?: string }>> = ({ title, bodyClass, children }) => (
   <html lang="pt-BR">
     <head>
       <meta charset="utf-8" />
@@ -42,7 +42,7 @@ const Layout: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) =
       <title>{title}</title>
       <link rel="stylesheet" href="/styles.css" />
     </head>
-    <body>{children}</body>
+    <body class={bodyClass}>{children}</body>
   </html>
 );
 
@@ -488,8 +488,9 @@ export function collectionPage(opts: {
   slots: SlotView[];
   mineSlots: Set<string>;
   login?: { error?: string };
+  view?: "shelf" | "spine";
 }): string {
-  const { groups, perm, email, whatsapp, roles, defaultRole, isAuthed, slots, mineSlots, login } = opts;
+  const { groups, perm, email, whatsapp, roles, defaultRole, isAuthed, slots, mineSlots, login, view } = opts;
   const isTemp = perm.roles.length > 0 && !perm.admin && !perm.name;
   const showLogin = !!login;
   const sized = groups.flatMap(({ base }) => base.dimensions ? [base.dimensions] : []);
@@ -500,7 +501,7 @@ export function collectionPage(opts: {
     : undefined;
 
   return doc(
-    <Layout title="Coleção de jogos de tabuleiro">
+    <Layout title="Coleção de jogos de tabuleiro" bodyClass={view === "spine" ? "view-spine" : undefined}>
       <div class="topbar collection-topbar">
         <div class="right">
           <button id="view-toggle" class="btn view-toggle" type="button" aria-pressed="false">Lombadas</button>
@@ -542,7 +543,7 @@ export function collectionPage(opts: {
       <script
         dangerouslySetInnerHTML={{
           __html: `
-            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.textContent=spine?'Estante':'Lombadas';}apply(localStorage.getItem('gameView')||'shelf');vt.addEventListener('click',function(){var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);});})();
+            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;var urlView=${view ? "'" + view + "'" : "null"};function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.textContent=spine?'Estante':'Lombadas';}var initial=urlView||localStorage.getItem('gameView')||'shelf';if(urlView)localStorage.setItem('gameView',urlView);apply(initial);vt.addEventListener('click',function(){var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);history.replaceState(null,'','/'+v);});})();
             var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf');
             var spinesEl=document.querySelector('.spines'),spineById={};if(spinesEl)Array.from(spinesEl.querySelectorAll('.spine')).forEach(function(s){spineById[s.dataset.id]=s;});function spineOf(b){return spineById[b.dataset.id];}
             boxes.forEach(function(b){if(b.classList.contains('sized'))return;var i=b.querySelector('img');if(!i)return;var size=function(){if(i.naturalWidth)b.style.aspectRatio=i.naturalWidth+'/'+i.naturalHeight;};i.complete?size():i.addEventListener('load',size);});

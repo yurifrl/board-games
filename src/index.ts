@@ -99,7 +99,7 @@ async function currentUser(c: Context) {
 }
 
 /** Render the public collection, optionally with the login modal overlaid. */
-async function renderHome(c: Context, login?: { error?: string }, status = 200) {
+async function renderHome(c: Context, login?: { error?: string }, status = 200, view?: "shelf" | "spine") {
   const perm = await currentUser(c);
   const isAuthed = !!perm;
   const effective = perm ?? PUBLIC_PERM;
@@ -128,11 +128,14 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200) 
     slots,
     mineSlots,
     login,
+    view,
   });
   return c.html(html, status as 200);
 }
 
 app.get("/", (c) => renderHome(c));
+app.get("/shelf", (c) => renderHome(c, undefined, 200, "shelf"));
+app.get("/spine", (c) => renderHome(c, undefined, 200, "spine"));
 
 // Hidden login: the public collection with the login modal floating above it.
 app.get("/login", (c) => renderHome(c, {}));
