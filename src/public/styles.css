@@ -113,6 +113,26 @@ body::-webkit-scrollbar { display:none; }
 }
 .collection-tools + .shelf, .play-section + .shelf { --pt:32px; }
 
+/* Floating view toggle: icon-only, bottom-left; blinks as a hint until first use. */
+.view-toggle {
+  position: fixed; left: 16px; bottom: 16px; z-index: 60;
+  width: 44px; height: 44px; padding: 0;
+  display: grid; place-items: center;
+  font-size: 20px; line-height: 1; color: #fff;
+  background: rgba(28,28,34,.82); border: 1px solid rgba(255,255,255,.16);
+  border-radius: 50%; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4); backdrop-filter: blur(4px);
+  transition: transform .15s ease, background .15s ease;
+}
+.view-toggle:hover, .view-toggle:focus-visible { transform: scale(1.08); background: rgba(44,44,52,.92); }
+body.view-spine .view-toggle { background: rgba(150,110,60,.9); }
+.view-toggle.hint { animation: vt-blink 1.6s ease-in-out infinite; }
+@keyframes vt-blink {
+  0%, 100% { opacity: .5; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  50% { opacity: 1; box-shadow: 0 0 0 5px rgba(255,255,255,.14), 0 4px 14px rgba(0,0,0,.4); }
+}
+@media (prefers-reduced-motion: reduce) { .view-toggle.hint { animation: none; } }
+
 /* Spine (bookshelf) view: narrow standing spines on the same wooden ledge. */
 .spines { display: none; }
 body.view-spine .shelf { display: none; }
