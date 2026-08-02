@@ -16,6 +16,30 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.worker.syncOnStart }}
+      # Best-effort catalog sync on every (re)start, before the app serves.
+      # Non-blocking: if the sync fails (e.g. Obsidian unreachable) the app
+      # still starts on the last-good volume data. The cron/trigger Workflow
+      # keeps it fresh afterwards.
+      initContainers:
+        - name: sync
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "bun run src/worker/index.ts || true"]
+          env:
+            - name: SYNC_ONCE
+              value: "1"
+            {{- include "board-games.workerEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- if .Values.assetsGcsBucket }}
+            - name: gcs-creds
+              mountPath: /var/secrets/gcp
+              readOnly: true
+            {{- end }}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+      {{- end }}
       containers:
         {{- if not .Values.worker.workflow.enabled }}
         # Worker: polls the Obsidian Local REST API, writes catalog + users +

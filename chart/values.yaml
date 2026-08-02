@@ -21,6 +21,9 @@ service:
 # ── worker sidecar: syncs from the Obsidian Local REST API ───────────────────
 worker:
   intervalSeconds: 300
+  # Run a one-shot catalog sync on every app (re)start via an initContainer.
+  # Non-blocking: a failed sync won't stop the app from serving cached data.
+  syncOnStart: true
   # Vault folder + note the worker reads.
   inventoryFolder: Yuri/Resources/Board Games/Inventory
   usersNote: Yuri/Resources/Board Games/Users.md
