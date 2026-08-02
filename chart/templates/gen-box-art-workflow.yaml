@@ -6,13 +6,14 @@
 # it (manual dispatch), e.g.:
 #
 #   argo submit --from workflowtemplate/board-games-gen-box-art \
-#     -p games="--name Clank" -p force="false"
+#     -p name="Clank" -p force="false"
 #
 # or via the Argo UI "Submit" button, which prompts for the parameters below.
 #
 # Parameters:
-#   games  selection args passed straight to gen-box-art:
-#          "--all" | "--name <prefix> ..." | "<game-id> ..."   (default: --all)
+#   all    "true" (default) generates for every game; ignored when 'name' is set.
+#   name   game name prefix (e.g. Clank); when non-empty it OVERRIDES 'all'.
+#          Space-separate for several ("Root Azul").
 #   force  "true" re-generates and overwrites every selected face;
 #          "false" (default) skips faces unchanged since last run (fingerprint).
 #
@@ -30,9 +31,15 @@ spec:
   serviceAccountName: {{ $fullname }}-gen-box-art
   arguments:
     parameters:
-      - name: games
-        value: "--all"
-        description: "Selection: --all | --name <prefix> [<prefix>...] | <game-id> [<game-id>...]"
+      - name: all
+        value: "true"
+        enum:
+          - "true"
+          - "false"
+        description: "Generate for every game. Ignored when 'name' is filled."
+      - name: name
+        value: ""
+        description: "Game name prefix (e.g. Clank). Overrides 'all'. Space-separate for several."
       - name: force
         value: "false"
         enum:
@@ -49,7 +56,8 @@ spec:
     - name: gen
       inputs:
         parameters:
-          - name: games
+          - name: all
+          - name: name
           - name: force
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -81,7 +89,14 @@ spec:
         args:
           - |
             set -e
-            ARGS="{{ `{{inputs.parameters.games}}` }}"
+            NAME="{{ `{{inputs.parameters.name}}` }}"
+            if [ -n "$NAME" ]; then
+              ARGS="--name $NAME"
+            elif [ "{{ `{{inputs.parameters.all}}` }}" = "true" ]; then
+              ARGS="--all"
+            else
+              echo "nothing selected: fill 'name' or set 'all=true'" >&2; exit 1
+            fi
             if [ "{{ `{{inputs.parameters.force}}` }}" = "true" ]; then ARGS="$ARGS --force"; fi
             echo "gen-box-art $ARGS"
             exec bun run src/worker/gen-box-art.ts $ARGS
