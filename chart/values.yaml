@@ -49,6 +49,15 @@ secretName: board-games
 assetsGcsBucket: ""
 gcsSecretName: board-games-gcs-creds
 
+# ── box-art generation (manual, on-demand Argo WorkflowTemplate) ─────────────
+# When enabled, installs `board-games-gen-box-art` (no trigger, no cron): run it
+# by hand with `argo submit --from workflowtemplate/board-games-gen-box-art
+# -p games="--name Clank" -p force="false"` or the Argo UI Submit button.
+# Needs GEMINI_API_KEY in `secretName` and (for upload) assetsGcsBucket set.
+# Requires Argo Workflows in the cluster.
+genBoxArt:
+  enabled: false
+
 # Pin the pod to a node. Needed on this cluster because longhorn's cross-node
 # data path is unreliable: the volume attaches cleanly only when the pod runs
 # on the same node as its replica. Empty = no pin. ponytail: workaround for

@@ -1,0 +1,133 @@
+{{- if .Values.genBoxArt.enabled }}
+{{- $fullname := include "board-games.fullname" . }}
+# ─────────────────────────────────────────────────────────────────────────────
+# On-demand box-art generation as an Argo WorkflowTemplate. There is NO trigger
+# and NO cron — box-art generation is paid, so it runs only when a human submits
+# it (manual dispatch), e.g.:
+#
+#   argo submit --from workflowtemplate/board-games-gen-box-art \
+#     -p games="--name Clank" -p force="false"
+#
+# or via the Argo UI "Submit" button, which prompts for the parameters below.
+#
+# Parameters:
+#   games  selection args passed straight to gen-box-art:
+#          "--all" | "--name <prefix> ..." | "<game-id> ..."   (default: --all)
+#   force  "true" re-generates and overwrites every selected face;
+#          "false" (default) skips faces unchanged since last run (fingerprint).
+#
+# The pod mounts the same RWO `data` PVC the app holds (co-located via
+# podAffinity) — it uploads to the GCS bucket and mirrors a copy to the cache.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: {{ $fullname }}-gen-box-art
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  entrypoint: gen
+  serviceAccountName: {{ $fullname }}-gen-box-art
+  arguments:
+    parameters:
+      - name: games
+        value: "--all"
+        description: "Selection: --all | --name <prefix> [<prefix>...] | <game-id> [<game-id>...]"
+      - name: force
+        value: "false"
+        enum:
+          - "false"
+          - "true"
+        description: "true = regenerate + overwrite every selected face; false = skip unchanged"
+  synchronization:
+    mutex:
+      name: {{ $fullname }}-gen-box-art
+  activeDeadlineSeconds: 5400
+  ttlStrategy:
+    secondsAfterCompletion: 3600
+  templates:
+    - name: gen
+      inputs:
+        parameters:
+          - name: games
+          - name: force
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: {{ $fullname }}
+              topologyKey: kubernetes.io/hostname
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-data
+        {{- if .Values.assetsGcsBucket }}
+        - name: gcs-creds
+          secret:
+            secretName: {{ .Values.gcsSecretName }}
+            items:
+              - key: private_key
+                path: key.json
+        {{- end }}
+      container:
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -e
+            ARGS="{{ `{{inputs.parameters.games}}` }}"
+            if [ "{{ `{{inputs.parameters.force}}` }}" = "true" ]; then ARGS="$ARGS --force"; fi
+            echo "gen-box-art $ARGS"
+            exec bun run src/worker/gen-box-art.ts $ARGS
+        env:
+          - name: GEMINI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secretName }}
+                key: GEMINI_API_KEY
+          {{- include "board-games.workerEnv" . | nindent 10 }}
+        volumeMounts:
+          - name: data
+            mountPath: /data
+          {{- if .Values.assetsGcsBucket }}
+          - name: gcs-creds
+            mountPath: /var/secrets/gcp
+            readOnly: true
+          {{- end }}
+        resources: {{ toYaml .Values.resources | nindent 10 }}
+---
+# ── RBAC ─────────────────────────────────────────────────────────────────────
+# Workflow pods write their own workflowtaskresults.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}-gen-box-art
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-gen-box-art
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-gen-box-art
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-gen-box-art
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-gen-box-art
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -90,8 +90,9 @@ Games are parsed from the YAML frontmatter of `.md` files in the vault folder
 `Yuri/Resources/Board Games/Inventory`. Recognized fields: `id`, `name`, `slug`,
 `language`, `type`, `expansion-of`, `price`, `purchase/source`,
 `purchase/date`, `tags`, `play_time` (minutes), `played` (boolean), `site/size`,
-`bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`, `image/grid`. Categories use
-`tags`. To list a game for sale:
+`bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`, `image/grid`, `description`
+(short 1-2 line blurb), `box-art/description` (art direction for `gen-box-art`).
+Categories use `tags`. To list a game for sale:
 
 ```yaml
 for_sale: true
@@ -124,6 +125,69 @@ bun run dev                                # app reads from ./data
 
 The worker needs the Obsidian Local REST API plugin running (default port 27124)
 and `OBSIDIAN_API_KEY` set (or hardcoded as a fallback in `src/worker/obsidian.ts`).
+
+### Worker (sync catalog + covers)
+
+The worker reads the Obsidian vault and populates `./data` (catalog, users,
+covers). Env comes from `.env` (resolved from 1Password via `task envs:op`).
+
+```bash
+task sync            # one-shot: catalog + users + covers  (SYNC_ONCE=1)
+task resync-covers   # one-shot: force re-pull every cover (fixes stale art)
+task worker          # long-running sidecar: poll + keep ./data in sync
+
+# raw equivalents (set env yourself):
+SYNC_ONCE=1 bun run src/worker/index.ts
+bun run src/worker/index.ts               # continuous
+```
+
+Box-art generation is **not** part of this sync — it's paid, so it only runs
+when you invoke `gen-box-art` explicitly (below).
+
+### Box art (`gen-box-art`)
+
+Generates cohesive flat-vector box faces — a **front** cover and a **spine** —
+per game with Gemini, and stores them through the same asset service as covers
+(uploads to the private GCS bucket when `ASSETS_GCS_BUCKET` is set, and mirrors a
+copy to the local disk cache). Each game's art is themed from its real cover's
+palette plus its note `description` / `box-art/description`. It is idempotent by
+default (fingerprints skip unchanged faces); pass `--force` to regenerate and
+overwrite. It prints a URL for every generated face.
+
+```bash
+task gen-box-art -- --name Clank            # match by name prefix
+task gen-box-art -- --name "Root" "Azul"     # several by name
+task gen-box-art -- <game-id> <game-id>     # specific games by id
+task gen-box-art -- --all                   # every game in the catalog
+task gen-box-art -- --name Clank --force    # regenerate even if unchanged
+```
+
+The `gen-box-art` task loads `.env`, points credentials at the **assets** service
+account (`.secrets/gcs-key.json`, not the gcal one `.env` uses), and sets the
+bucket. It inherits `GEMINI_API_KEY` from your shell. Raw equivalent:
+
+```bash
+env ASSETS_GCS_BUCKET=<bucket> \
+    GOOGLE_APPLICATION_CREDENTIALS=$PWD/.secrets/gcs-key.json \
+    GEMINI_API_KEY=<key> \
+    bun run src/worker/gen-box-art.ts --name Clank
+```
+
+Asset layout: `<game-id>/front/gen/original.png` and `<game-id>/spine/gen/original.png`.
+Bump `STYLE_VERSION` in `src/asset/box-contract.ts` to restyle the whole line.
+The shared contract (dimensions, format, keys) lives in `src/asset/box-contract.ts`
+so the generator and the frontend agree.
+
+In-cluster, enable `genBoxArt.enabled` to install a manual-dispatch Argo
+`WorkflowTemplate` (`board-games-gen-box-art`, no trigger/cron). Run it on demand:
+
+```bash
+argo submit --from workflowtemplate/board-games-gen-box-art \
+  -p games="--name Clank" -p force="false"   # or the Argo UI Submit button
+```
+
+`games` takes the same selection args (`--all` | `--name <prefix>` | `<id>`);
+`force` defaults to `"false"`. Needs `GEMINI_API_KEY` in the app secret.
 
 ## Deploy (k8s)
 
