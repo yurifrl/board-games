@@ -1,4 +1,4 @@
-{{- if .Values.genBoxArt.enabled }}
+{{- if .Values.worker.workflow.enabled }}
 {{- $fullname := include "board-games.fullname" . }}
 # ─────────────────────────────────────────────────────────────────────────────
 # On-demand box-art generation as an Argo WorkflowTemplate. There is NO trigger
