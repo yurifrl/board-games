@@ -51,50 +51,36 @@ export interface FaceInput {
   palette?: string[];
 }
 
-/** Wrap a title into vertical columns: one per word, or a long single word split
- * into balanced chunks. Columns are rendered side by side on the spine. */
-export function spineColumns(name: string, max = 7): string[] {
-  const words = name.toUpperCase().split(/\s+/).filter(Boolean);
-  if (words.length > 1) return words;
-  const w = words[0] ?? "";
-  if (w.length <= max) return [w];
-  const n = Math.ceil(w.length / max);
-  const size = Math.ceil(w.length / n);
-  const cols: string[] = [];
-  for (let i = 0; i < w.length; i += size) cols.push(w.slice(i, i + size));
-  return cols;
-}
-
 export function facePrompt(face: Face, name: string, input: FaceInput): string {
   const style = styleWithPalette(input.palette);
   const parts = [input.description, input.artNote].map((s) => s?.trim()).filter(Boolean);
   const subject = parts.length ? `What it's about: ${parts.join(" ")}` : `Evoke its theme: ${input.theme}.`;
   if (face === "spine") {
     const palette = (input.palette?.length ? input.palette : DEFAULT_PALETTE).join(", ");
-    const cols = spineColumns(name);
-    const rows = Math.max(...cols.map((c) => c.length));
-    const grid = Array.from({ length: rows }, (_, r) => cols.map((c) => c[r] ?? " ").join("  ")).join("\n");
-    const layout = cols.length > 1
-      ? `Arrange the title as ${cols.length} vertical columns placed SIDE BY SIDE ` +
-        `(left to right), all starting at the TOP and running downward in parallel ` +
-        `right next to each other. NEVER stack one column below another. `
-      : `Arrange the title as a single vertical column down the centre. `;
+    const upper = name.toUpperCase();
+    const letters = upper.replace(/\s+/g, "");
+    const stacked = upper.split("").map((ch) => (ch === " " ? "" : ch)).join("\n");
     return (
       `Generate a flat front view of a single book spine (not 3D), the title ` +
-      `centred.\n\n${layout}Within each column write ONE letter per line, each ` +
-      `letter UPRIGHT and stacked top to bottom. Do NOT rotate the letters. Do NOT ` +
-      `write any word horizontally or on its side. Reproduce EXACTLY this letter ` +
-      `grid — columns are side by side, one letter per row per column — with no ` +
-      `extra, missing, doubled or reordered letters:\n\n${grid}\n\nSize the letters ` +
-      `to fit with clear margins so nothing runs off any edge; keep them bold, ` +
-      `high-contrast and centred. Behind them, a richly textured illustrated ` +
-      `background scene evoking the game fills the whole image edge to edge — NO ` +
-      `frame, NO border, NO panel, NO cartouche, NO boxes or delimited boundaries ` +
-      `of any kind. Layer 2-3 foreground elements (a branch, an object or motif) ` +
-      `that cross OVER the letters, clearly in FRONT of the title, for depth. ` +
-      `${subject} Do NOT depict any people, human figures, silhouettes, crowds, ` +
-      `hands or faces. Flat graphic design only — no perspective, no mockup, no 3D ` +
-      `render. Use a cohesive limited palette derived from these colors: ${palette}.`
+      `centered.\n\nDisplay EXACTLY this text (no extra, missing, doubled or ` +
+      `reordered letters). Write ONE letter per line, each letter UPRIGHT and ` +
+      `stacked directly beneath the previous one in a SINGLE vertical column down ` +
+      `the centre. Do NOT rotate the letters. Do NOT place two letters side by ` +
+      `side. Do NOT write any word horizontally or on its side. Blank lines ` +
+      `separate words:\n\n${stacked}\n\nThe title has ${letters.length} letters ` +
+      `— size them SMALL enough that the whole vertical stack fits from top to ` +
+      `bottom with clear margins and nothing runs off any edge. Keep the stack ` +
+      `bold, high-contrast and centred, away from the left and right edges. ` +
+      `Behind it, a richly textured illustrated background scene evoking the game ` +
+      `fills the whole image edge to edge — NO frame, NO border, NO panel, NO ` +
+      `cartouche, NO boxes or delimited boundaries of any kind. Layer 2-3 ` +
+      `foreground elements (a branch, an object or motif) that cross OVER the ` +
+      `letters, clearly in FRONT of the title, for depth. Let the background and ` +
+      `overlapping elements bleed outward into the side margins, which will be ` +
+      `cropped away. ${subject} Do NOT depict any people, human figures, ` +
+      `silhouettes, crowds, hands or faces. Flat graphic design only — no ` +
+      `perspective, no mockup, no 3D render. Use a cohesive limited palette ` +
+      `derived from these colors: ${palette}.`
     );
   }
   return (
