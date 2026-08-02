@@ -1,26 +1,21 @@
 /**
- * Box-art generator — an isolated component that turns a game id into two
- * cohesive, flat-vector images: the box FRONT (the "cover", seen when the box
- * is open/facing you) and the box SPINE (the thin edge seen on the shelf).
+ * Generated box-art source. Turns a game into cohesive flat-vector box faces
+ * (front + spine) via an image model, plugged into the same pull-pipeline as
+ * the BGG/Ludopedia cover sources — so the store (GCS origin + disk cache) and
+ * the `/asset` serving path handle it with zero special-casing.
  *
- * It is deliberately self-contained: pass a game and an {@link ImageGen}, get
- * back file paths in a tmp dir. The worker will later call {@link generateBoxArt}
- * and a separate step will upload the tmp files to the bucket — this module does
- * neither, so it has no dependency on the store, GCS, or the pipeline.
- *
- *   bun run src/asset/gen/box-art.ts <id> [<id> ...]      # from the catalog
- *   GEN_DIR=/somewhere bun run src/asset/gen/box-art.ts <id>
- *
- * The single {@link HOUSE_STYLE} string is the "prompt harness": every image
- * for every game is generated against it, which is what keeps the whole shelf
- * looking like one publisher's line.
+ * The single {@link HOUSE_STYLE} string is the prompt harness: every face of
+ * every game is generated against it, which is what makes the whole shelf read
+ * as one publisher's line. Fingerprinted by (style version + name + theme), so
+ * art is generated once and only re-generated when the prompt or style changes.
  */
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { Game } from "../../games.ts";
-import { loadCatalog } from "../../store.ts";
+import {
+  BOX_ART_FORMAT, BOX_ART_SOURCE, FACES, STYLE_VERSION,
+  aspectRatioFor, boxArtKey, type BoxDims, type Face,
+} from "../box-contract.ts";
+import { SourceUnavailableError, type AssetBlob, type AssetSource, type DiscoveredAsset, type Entity } from "../types.ts";
 
-/** The shared visual contract. Change this once → the whole shelf restyles. */
+/** The shared visual contract. Change this (and bump STYLE_VERSION) → whole shelf restyles. */
 export const HOUSE_STYLE =
   "Flat vector illustration, bold geometric shapes, thick clean outlines, " +
   "subtle paper grain, limited cohesive palette (cream #f2e9d0, teal #3fa39a, " +
@@ -28,44 +23,24 @@ export const HOUSE_STYLE =
   "heavy gradients, no drop shadows. Centered strong sans-serif title. " +
   "Consistent board-game publisher house style across the whole line.";
 
-/** Gemini's supported aspect ratios; we snap a box face to the nearest one. */
-const RATIOS: Array<[string, number]> = [
-  ["1:1", 1], ["4:5", 0.8], ["5:4", 1.25], ["3:4", 0.75], ["4:3", 1.333],
-  ["2:3", 0.667], ["3:2", 1.5], ["9:16", 0.5625], ["16:9", 1.778], ["21:9", 2.333],
-];
-
-/** Nearest supported aspect ratio for a physical box face (w×h in cm). */
-export function snapRatio(widthCm?: number, heightCm?: number, fallback = "1:1"): string {
-  if (!widthCm || !heightCm) return fallback;
-  const target = widthCm / heightCm;
-  return RATIOS.reduce((best, r) =>
-    Math.abs(r[1] - target) < Math.abs(best[1] - target) ? r : best,
-  )[0];
-}
-
-/** Motif words drawn from the game's own facts — the per-game half of the prompt. */
-export function themeHint(g: Game): string {
-  const f = g.facts;
-  const cats = f?.categories?.slice(0, 3) ?? [];
-  const mechs = f?.mechanics?.slice(0, 3) ?? [];
-  const bits = [...cats, ...mechs];
+/** Motif words drawn from the entity's own facts — the per-game half of the prompt. */
+export function themeHint(e: Entity): string {
+  const bits = [...(e.categories ?? []).slice(0, 3), ...(e.mechanics ?? []).slice(0, 3)];
   return bits.length ? bits.join(", ") : "abstract strategy board game";
 }
 
-export function coverPrompt(g: Game): string {
+export function facePrompt(face: Face, name: string, theme: string): string {
+  if (face === "spine") {
+    return (
+      `Board game box SPINE only — a tall narrow vertical strip, the thin edge ` +
+      `seen on a shelf — for the game titled "${name}". Vertical title text ` +
+      `"${name}" reading bottom-to-top, a small emblem icon matching the cover, ` +
+      `theme hint: ${theme}. ${HOUSE_STYLE}`
+    );
+  }
   return (
-    `Board game box FRONT COVER for the game titled "${g.name}". ` +
-    `Evoke its theme: ${themeHint(g)}. Iconic central illustration with the ` +
-    `title clearly legible. ${HOUSE_STYLE}`
-  );
-}
-
-export function spinePrompt(g: Game): string {
-  return (
-    `Board game box SPINE only — a tall narrow vertical strip, the thin edge ` +
-    `seen on a shelf — for the game titled "${g.name}". Vertical title text ` +
-    `"${g.name}" reading bottom-to-top, a small emblem icon matching the cover, ` +
-    `theme hint: ${themeHint(g)}. ${HOUSE_STYLE}`
+    `Board game box FRONT COVER for the game titled "${name}". Evoke its theme: ` +
+    `${theme}. Iconic central illustration with the title clearly legible. ${HOUSE_STYLE}`
   );
 }
 
@@ -86,58 +61,56 @@ export function geminiImageGen(apiKey: string, model = GEMINI_MODEL): ImageGen {
         generationConfig: { imageConfig: { aspectRatio } },
       }),
     });
+    if (res.status === 429) throw new SourceUnavailableError(BOX_ART_SOURCE, "gemini image rate-limited (429)");
     if (!res.ok) throw new Error(`gemini image ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const inline = parts.find((p: any) => p.inlineData)?.inlineData?.data;
+    const inline = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
     if (!inline) throw new Error(`gemini returned no image for prompt: ${prompt.slice(0, 60)}…`);
     return Uint8Array.from(Buffer.from(inline, "base64"));
   };
 }
 
-export interface BoxArt {
-  cover: string;
-  spine: string;
+export interface GenConfig {
+  /** GEMINI_API_KEY. When absent the source is inert (discovers nothing). */
+  apiKey?: string;
+  /** Test seam — defaults to {@link geminiImageGen}. */
+  gen?: ImageGen;
 }
 
 /**
- * Generate the cover + spine for one game into {@link outDir} as
- * `<id>_cover.png` and `<id>_spine.png`. Returns the two paths.
+ * One {@link AssetSource} per face. Registered in sources/registry.ts alongside
+ * the cover sources; the pipeline fingerprints, skips unchanged, and stores.
  */
-export async function generateBoxArt(g: Game, outDir: string, gen: ImageGen): Promise<BoxArt> {
-  await mkdir(outDir, { recursive: true });
-  const coverRatio = snapRatio(g.siteSize?.widthCm, g.siteSize?.heightCm, "1:1");
-  const cover = join(outDir, `${g.id}_cover.png`);
-  const spine = join(outDir, `${g.id}_spine.png`);
-  await writeFile(cover, await gen(coverPrompt(g), coverRatio));
-  await writeFile(spine, await gen(spinePrompt(g), "9:16"));
-  return { cover, spine };
+export class GenBoxArtSource implements AssetSource {
+  readonly id = BOX_ART_SOURCE;
+  readonly priority = 10;
+  private readonly gen?: ImageGen;
+
+  constructor(readonly kind: Face, cfg: GenConfig = {}) {
+    this.gen = cfg.gen ?? (cfg.apiKey ? geminiImageGen(cfg.apiKey) : undefined);
+  }
+
+  async discover(e: Entity): Promise<DiscoveredAsset[]> {
+    if (!this.gen) return [];
+    const theme = themeHint(e);
+    const key = boxArtKey(e.id, this.kind);
+    const prompt = facePrompt(this.kind, e.name, theme);
+    const ratio = aspectRatioFor(this.kind, e.dims);
+    return [
+      {
+        key,
+        fingerprint: `gen:${STYLE_VERSION}:${this.kind}:${e.name}|${theme}`,
+        fetch: async () => ({
+          bytes: await this.gen!(prompt, ratio),
+          contentType: `image/${BOX_ART_FORMAT}`,
+        }),
+      },
+    ];
+  }
 }
 
-// ── CLI ────────────────────────────────────────────────────────────────────
-if (import.meta.main) {
-  const ids = process.argv.slice(2);
-  if (!ids.length) {
-    console.error("usage: bun run src/asset/gen/box-art.ts <id> [<id> ...]");
-    process.exit(1);
-  }
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error("GEMINI_API_KEY is required");
-    process.exit(1);
-  }
-  const dataDir = process.env.DATA_DIR ?? "./data";
-  const outDir = process.env.GEN_DIR ?? "./data/tmp/box-art";
-  const games = await loadCatalog(dataDir);
-  const byId = new Map(games.map((g) => [g.id, g]));
-  const gen = geminiImageGen(apiKey);
-  for (const id of ids) {
-    const g = byId.get(id);
-    if (!g) {
-      console.error(`  skip ${id}: not in catalog`);
-      continue;
-    }
-    const { cover, spine } = await generateBoxArt(g, outDir, gen);
-    console.log(`  ${g.name}\n    cover ${cover}\n    spine ${spine}`);
-  }
+/** Both face sources, or none when no API key is configured. */
+export function buildGenSources(cfg: GenConfig = {}): AssetSource[] {
+  if (!cfg.apiKey && !cfg.gen) return [];
+  return FACES.map((face) => new GenBoxArtSource(face, cfg));
 }

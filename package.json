@@ -8,7 +8,7 @@
     "start": "bun run src/index.ts",
     "worker": "bun run src/worker/index.ts",
     "worker-sync-once": "SYNC_ONCE=1 bun run src/worker/index.ts",
-    "gen-box-art": "bun run src/asset/gen/box-art.ts"
+    "gen-box-art": "bun run src/worker/gen-box-art.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",

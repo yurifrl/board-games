@@ -1,38 +1,50 @@
 import { expect, test } from "bun:test";
-import { snapRatio, themeHint, coverPrompt, spinePrompt, generateBoxArt, HOUSE_STYLE } from "./box-art.ts";
-import type { Game } from "../../games.ts";
+import { GenBoxArtSource, buildGenSources, themeHint, facePrompt, HOUSE_STYLE } from "./box-art.ts";
+import { aspectRatioFor, boxArtKey, STYLE_VERSION } from "../box-contract.ts";
+import type { Entity } from "../types.ts";
 
-const game = (over: Partial<Game> = {}): Game => ({
-  id: "g1", name: "Test Quest", tags: [], isGame: true, purchasedAt: null, forSale: false, ...over,
-});
+const entity = (over: Partial<Entity> = {}): Entity => ({ id: "g1", name: "Test Quest", ...over });
 
-test("snapRatio snaps a box face to the nearest supported ratio", () => {
-  expect(snapRatio(undefined, undefined)).toBe("1:1");
-  expect(snapRatio(30, 30)).toBe("1:1");
-  expect(snapRatio(20, 30)).toBe("2:3"); // 0.667
-  expect(snapRatio(30, 20)).toBe("3:2"); // 1.5
+test("aspectRatioFor snaps a face to the nearest supported ratio", () => {
+  expect(aspectRatioFor("front", undefined)).toBe("1:1");
+  expect(aspectRatioFor("front", { widthCm: 20, heightCm: 30 })).toBe("2:3");
+  expect(aspectRatioFor("spine", undefined)).toBe("9:16");
+  expect(aspectRatioFor("spine", { widthCm: 30, heightCm: 30, depthCm: 6 })).toBe("9:16"); // 6:30 = 0.2 → nearest 9:16
 });
 
 test("themeHint uses facts, falls back when none", () => {
-  expect(themeHint(game())).toContain("abstract strategy");
-  expect(themeHint(game({ facts: { categories: ["Space"], mechanics: ["Dice"] } as any }))).toBe("Space, Dice");
+  expect(themeHint(entity())).toContain("abstract strategy");
+  expect(themeHint(entity({ categories: ["Space"], mechanics: ["Dice"] }))).toBe("Space, Dice");
 });
 
-test("prompts carry the game title and the shared house style", () => {
-  const g = game({ name: "Nova" });
-  for (const p of [coverPrompt(g), spinePrompt(g)]) {
-    expect(p).toContain("Nova");
-    expect(p).toContain(HOUSE_STYLE);
-  }
-  expect(spinePrompt(g)).toContain("SPINE");
+test("prompts carry title + shared style; spine is vertical", () => {
+  const p = facePrompt("front", "Nova", "space");
+  expect(p).toContain("Nova");
+  expect(p).toContain(HOUSE_STYLE);
+  expect(facePrompt("spine", "Nova", "space")).toContain("SPINE");
 });
 
-test("generateBoxArt writes cover + spine and passes the right aspect ratios", async () => {
-  const calls: string[] = [];
-  const gen = async (_p: string, ar: string) => { calls.push(ar); return new Uint8Array([1]); };
-  const dir = `${process.env.TMPDIR ?? "/tmp"}/box-art-test-${Date.now()}`;
-  const out = await generateBoxArt(game({ siteSize: { widthCm: 20, heightCm: 30 } }), dir, gen);
-  expect(out.cover.endsWith("g1_cover.png")).toBe(true);
-  expect(out.spine.endsWith("g1_spine.png")).toBe(true);
-  expect(calls).toEqual(["2:3", "9:16"]); // cover snapped from size, spine fixed
+test("boxArtKey addresses the gen source per face", () => {
+  expect(boxArtKey("g1", "front")).toEqual({ entity: "g1", kind: "front", source: "gen", variant: "original", ext: "png" });
+  expect(boxArtKey("g1", "spine").kind).toBe("spine");
+});
+
+test("source is inert without an ImageGen, and discovers one asset with one", async () => {
+  expect(await new GenBoxArtSource("front").discover(entity())).toEqual([]);
+  expect(buildGenSources({})).toEqual([]);
+
+  const calls: Array<[string, string]> = [];
+  const gen = async (prompt: string, ar: string) => { calls.push([prompt, ar]); return new Uint8Array([1]); };
+  const src = new GenBoxArtSource("front", { gen });
+  const [asset] = await src.discover(entity({ categories: ["Space"], dims: { widthCm: 20, heightCm: 30 } }));
+  expect(asset.key).toEqual(boxArtKey("g1", "front"));
+  expect(asset.fingerprint).toContain(STYLE_VERSION);
+  const blob = await asset.fetch();
+  expect(blob.contentType).toBe("image/png");
+  expect(calls[0][1]).toBe("2:3"); // aspect ratio from dims
+});
+
+test("buildGenSources yields both faces when configured", () => {
+  const sources = buildGenSources({ gen: async () => new Uint8Array() });
+  expect(sources.map((s) => s.kind)).toEqual(["front", "spine"]);
 });

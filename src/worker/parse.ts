@@ -7,9 +7,14 @@ import type { Game } from "../games.ts";
 
 const NON_GAME_TAGS = new Set(["book", "skip", "tcg"]);
 
-/** Parse `DD/MM/YY` (with `??` allowed) to epoch ms, or null. */
+/** Parse `DD/MM/YY` (with `??` allowed) or ISO `YYYY-MM-DD` to epoch ms, or null. */
 function parsePurchaseDate(s?: string): number | null {
   if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const t = Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(t) ? null : t;
+  }
   const m = s.match(/^(\d{1,2}|\?\?)\/(\d{1,2}|\?\?)\/(\d{2,4})$/);
   if (!m) return null;
   const day = m[1] === "??" ? 1 : Number(m[1]);
@@ -31,11 +36,12 @@ function positiveNumber(v: unknown): number | undefined {
 }
 
 function siteSize(v: unknown): Game["siteSize"] {
-  const match = str(v)?.trim().match(/^(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*cm)?$/i);
+  const match = str(v)?.trim().match(/^(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*x\s*(\d+(?:[.,]\d+)?))?(?:\s*cm)?$/i);
   if (!match) return undefined;
   const widthCm = positiveNumber(match[1].replace(",", "."));
   const heightCm = positiveNumber(match[2].replace(",", "."));
-  return widthCm && heightCm ? { widthCm, heightCm } : undefined;
+  const depthCm = match[3] ? positiveNumber(match[3].replace(",", ".")) : undefined;
+  return widthCm && heightCm ? { widthCm, heightCm, depthCm } : undefined;
 }
 
 /** Parse a note's markdown frontmatter + body into a Game, or null. */

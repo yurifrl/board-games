@@ -8,8 +8,9 @@ export interface SourcesConfig {
 }
 
 /**
- * The complete set of pull sources. THIS is the only place you add a source —
- * a new site or asset kind is one new AssetSource here, no branching elsewhere.
+ * The complete set of pull sources run by the regular sync. Generated box art
+ * is deliberately NOT here — it runs on demand from src/worker/gen-box-art.ts
+ * so a routine sync never triggers (paid) image generation.
  */
 export function buildSources(cfg: SourcesConfig = {}): AssetSource[] {
   return [new BggCoverSource(cfg.bgg), new LudopediaCoverSource(cfg.ludopedia)];

@@ -49,6 +49,11 @@ export interface Entity {
   bggId?: string;
   ludopediaId?: string;
   ludopediaSlug?: string;
+  /** Theme signal for generated box art (from provider facts). */
+  categories?: string[];
+  mechanics?: string[];
+  /** Physical box dimensions, for box-art aspect ratios + the 3D shelf. */
+  dims?: import("./box-contract.ts").BoxDims;
 }
 
 /**
