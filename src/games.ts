@@ -16,7 +16,7 @@ export type Game = {
   tags: string[];
   playTime?: number;
   played?: boolean;
-  siteSize?: { widthCm: number; heightCm: number; depthCm?: number };
+  dimensions?: { widthCm: number; heightCm: number; depthCm?: number };
   urlBgg?: string;
   urlLudopedia?: string;
   bggId?: string;

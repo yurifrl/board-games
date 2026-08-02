@@ -35,7 +35,7 @@ function positiveNumber(v: unknown): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-function siteSize(v: unknown): Game["siteSize"] {
+function dimensions(v: unknown): Game["dimensions"] {
   const match = str(v)?.trim().match(/^(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*x\s*(\d+(?:[.,]\d+)?))?(?:\s*cm)?$/i);
   if (!match) return undefined;
   const widthCm = positiveNumber(match[1].replace(",", "."));
@@ -111,7 +111,7 @@ function mapGame(fm: Record<string, unknown>, body: string): Game | null {
     tags,
     playTime: positiveNumber(fm["play_time"] ?? fm["play-time"]),
     played: typeof fm["played"] === "boolean" ? fm["played"] : undefined,
-    siteSize: siteSize(fm["site/size"]),
+    dimensions: dimensions(fm["dimensions"]),
     isGame: !tags.some((t) => NON_GAME_TAGS.has(String(t).toLowerCase())),
     purchasedAt: parsePurchaseDate(str(fm["purchase/date"])),
     urlBgg: str(fm["bgg/url"]) ?? str(fm["url/bgg"]),

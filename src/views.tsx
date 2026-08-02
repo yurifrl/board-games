@@ -112,7 +112,7 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
   const facts = games.map((game) => game.facts);
   const terms = (field: "mechanics" | "categories" | "designers" | "publishers") => facts.flatMap((fact) => fact?.[field] ?? []);
   const search = games.flatMap((game) => [game.name, ...game.tags, game.type ?? game.facts?.type ?? "", ...terms("mechanics"), ...terms("categories"), ...terms("designers"), ...terms("publishers")]).join(" ").toLowerCase();
-  const size = g.siteSize;
+  const size = g.dimensions;
   const sizeStyle = size ? `;width:${cmToPx(size.widthCm)}px;aspect-ratio:${size.widthCm}/${size.heightCm}` : "";
   const coverWidth = size ? Math.ceil(cmToPx(size.widthCm) * 2) : undefined;
   const coverHeight = size ? Math.ceil(cmToPx(size.heightCm) * 2) : undefined;
@@ -492,7 +492,7 @@ export function collectionPage(opts: {
   const { groups, perm, email, whatsapp, roles, defaultRole, isAuthed, slots, mineSlots, login } = opts;
   const isTemp = perm.roles.length > 0 && !perm.admin && !perm.name;
   const showLogin = !!login;
-  const sized = groups.flatMap(({ base }) => base.siteSize ? [base.siteSize] : []);
+  const sized = groups.flatMap(({ base }) => base.dimensions ? [base.dimensions] : []);
   const colw = Math.max(BOX_WIDTH_PX, ...sized.map(({ widthCm }) => cmToPx(widthCm)));
   const rowh = Math.max(SHELF_HEIGHT_PX, ...sized.map(({ heightCm }) => cmToPx(heightCm)));
   const shelfStyle = colw > BOX_WIDTH_PX || rowh > SHELF_HEIGHT_PX

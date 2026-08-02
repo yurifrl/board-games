@@ -77,25 +77,25 @@ describe("collection filters", () => {
   });
 
   test("reads physical shelf size from Obsidian frontmatter", () => {
-    const parsed = parseGameNote(`---\nid: sized-game\nname: Sized Game\nsite/size: " 10 X 7 CM "\n---`);
-    expect(parsed?.siteSize).toEqual({ widthCm: 10, heightCm: 7 });
+    const parsed = parseGameNote(`---\nid: sized-game\nname: Sized Game\ndimensions: " 10 X 7 CM "\n---`);
+    expect(parsed?.dimensions).toEqual({ widthCm: 10, heightCm: 7 });
 
-    const unitless = parseGameNote(`---\nid: sized-game\nname: Sized Game\nsite/size: 10x7\n---`);
-    expect(unitless?.siteSize).toEqual({ widthCm: 10, heightCm: 7 });
+    const unitless = parseGameNote(`---\nid: sized-game\nname: Sized Game\ndimensions: 10x7\n---`);
+    expect(unitless?.dimensions).toEqual({ widthCm: 10, heightCm: 7 });
 
-    const decimalComma = parseGameNote(`---\nid: sized-game\nname: Sized Game\nsite/size: 9,5x6,5\n---`);
-    expect(decimalComma?.siteSize).toEqual({ widthCm: 9.5, heightCm: 6.5 });
+    const decimalComma = parseGameNote(`---\nid: sized-game\nname: Sized Game\ndimensions: 9,5x6,5\n---`);
+    expect(decimalComma?.dimensions).toEqual({ widthCm: 9.5, heightCm: 6.5 });
 
-    const invalid = parseGameNote(`---\nid: sized-game\nname: Sized Game\nsite/size: 0x7cm\n---`);
-    expect(invalid?.siteSize).toBeUndefined();
+    const invalid = parseGameNote(`---\nid: sized-game\nname: Sized Game\ndimensions: 0x7cm\n---`);
+    expect(invalid?.dimensions).toBeUndefined();
 
     const missing = parseGameNote(`---\nid: jenga\nname: Jenga\n---`);
-    expect(missing?.siteSize).toBeUndefined();
+    expect(missing?.dimensions).toBeUndefined();
   });
 
   test("renders declared dimensions and expands only oversized shelves", () => {
-    const sized = { ...game, bggId: "sized-cover", siteSize: { widthCm: 10, heightCm: 7 } };
-    const oversized = { ...game, id: "large", siteSize: { widthCm: 25, heightCm: 35 } };
+    const sized = { ...game, bggId: "sized-cover", dimensions: { widthCm: 10, heightCm: 7 } };
+    const oversized = { ...game, id: "large", dimensions: { widthCm: 25, heightCm: 35 } };
 
     const sizedHtml = render([sized]);
     expect(sizedHtml).toContain('class="box sized"');
