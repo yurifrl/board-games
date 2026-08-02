@@ -89,7 +89,7 @@ downgrades.
 Games are parsed from the YAML frontmatter of `.md` files in the vault folder
 `Yuri/Resources/Board Games/Inventory`. Recognized fields: `id`, `name`, `slug`,
 `language`, `type`, `expansion-of`, `price`, `purchase/source`,
-`purchase/date`, `tags`, `play_time` (minutes), `played` (boolean), `site/size`,
+`purchase/date`, `tags`, `play_time` (minutes), `played` (boolean), `dimensions`,
 `bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`, `image/grid`, `description`
 (short 1-2 line blurb), `box-art/description` (art direction for `gen-box-art`).
 Categories use `tags`. To list a game for sale:
@@ -150,16 +150,15 @@ Generates cohesive flat-vector box faces — a **front** cover and a **spine** �
 per game with Gemini, and stores them through the same asset service as covers
 (uploads to the private GCS bucket when `ASSETS_GCS_BUCKET` is set, and mirrors a
 copy to the local disk cache). Each game's art is themed from its real cover's
-palette plus its note `description` / `box-art/description`. It is idempotent by
-default (fingerprints skip unchanged faces); pass `--force` to regenerate and
-overwrite. It prints a URL for every generated face.
+palette plus its note `description` / `box-art/description`. Every run
+regenerates and **overwrites** (generation is non-deterministic). It prints a
+URL for every generated face.
 
 ```bash
 task gen-box-art -- --name Clank            # match by name prefix
 task gen-box-art -- --name "Root" "Azul"     # several by name
 task gen-box-art -- <game-id> <game-id>     # specific games by id
 task gen-box-art -- --all                   # every game in the catalog
-task gen-box-art -- --name Clank --force    # regenerate even if unchanged
 ```
 
 The `gen-box-art` task loads `.env`, points credentials at the **assets** service
@@ -178,16 +177,16 @@ Bump `STYLE_VERSION` in `src/asset/box-contract.ts` to restyle the whole line.
 The shared contract (dimensions, format, keys) lives in `src/asset/box-contract.ts`
 so the generator and the frontend agree.
 
-In-cluster, enable `genBoxArt.enabled` to install a manual-dispatch Argo
-`WorkflowTemplate` (`board-games-gen-box-art`, no trigger/cron). Run it on demand:
+In-cluster, the manual-dispatch Argo `WorkflowTemplate` `board-games-gen-box-art`
+(no trigger/cron) is installed with the Argo worker mode. Run it on demand:
 
 ```bash
-argo submit --from workflowtemplate/board-games-gen-box-art \
-  -p games="--name Clank" -p force="false"   # or the Argo UI Submit button
+argo submit --from workflowtemplate/board-games-gen-box-art -p name="Clank"
+#   or the Argo UI "Submit" button
 ```
 
-`games` takes the same selection args (`--all` | `--name <prefix>` | `<id>`);
-`force` defaults to `"false"`. Needs `GEMINI_API_KEY` in the app secret.
+Parameters: `all` (`true`/`false`, default `true` — every game) and `name`
+(a game-name prefix that overrides `all`). Needs `GEMINI_API_KEY` in the app secret.
 
 ## Deploy (k8s)
 

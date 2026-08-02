@@ -9,13 +9,11 @@
  *   bun run gen-box-art <game-id> [<game-id> ...]   # specific games
  *   bun run gen-box-art --all                       # every game in the catalog
  *   bun run gen-box-art --name "Root" "Azul"        # match by name prefix
- *   bun run gen-box-art --all --force               # re-generate even unchanged
  *
- * By default it is idempotent — fingerprints skip faces that haven't changed
- * (same STYLE_VERSION, name, description, palette). Pass `--force` to regenerate
- * and overwrite regardless (generation is non-deterministic, so force pulls fresh
- * art). Each game's art is themed from its REAL cover — the cover's dominant
- * palette is sampled and fed into the prompt. It prints a URL for every face.
+ * Every run REGENERATES and overwrites: generation is non-deterministic, so
+ * re-running always pulls fresh art. Each game's art is themed from its REAL
+ * cover — the cover's dominant palette is sampled and fed into the prompt. It
+ * prints a URL for every generated face.
  */
 import { Storage } from "@google-cloud/storage";
 import type { Game } from "../games.ts";
@@ -88,11 +86,9 @@ if (!apiKey) {
 }
 
 const games = await loadCatalog(DATA_DIR);
-const argv = process.argv.slice(2);
-const force = argv.includes("--force");
-const chosen = select(games, argv.filter((a) => a !== "--force"));
+const chosen = select(games, process.argv.slice(2));
 if (!chosen.length) {
-  console.error("no games selected. usage: bun run gen-box-art <id ...> | --all | --name <prefix ...> [--force]");
+  console.error("no games selected. usage: bun run gen-box-art <id ...> | --all | --name <prefix ...>");
   process.exit(1);
 }
 
@@ -101,7 +97,7 @@ console.log(`generating box art for ${chosen.length} game(s) → ${BUCKET ? `GCS
 
 const entities: Entity[] = [];
 for (const g of chosen) {
-  entities.push({ id: g.id, name: g.name, categories: g.facts?.categories, mechanics: g.facts?.mechanics, description: g.description ?? bggBlurb(g), artNote: g.boxArtDescription, dims: g.siteSize, palette: await coverPalette(g, service) });
+  entities.push({ id: g.id, name: g.name, categories: g.facts?.categories, mechanics: g.facts?.mechanics, description: g.description ?? bggBlurb(g), artNote: g.boxArtDescription, dims: g.dimensions, palette: await coverPalette(g, service) });
 }
 
 const sources = buildGenSources({ apiKey });
@@ -112,7 +108,7 @@ await runPipeline(entities, sources, service, (r) => {
   const name = chosen.find((x) => x.id === r.entity)?.name ?? r.entity;
   console.log(`  ${r.outcome.padEnd(9)} ${r.kind.padEnd(5)} ${name}`);
   if (r.outcome === "stored" || r.outcome === "unchanged") touched.add(r.entity);
-}, { force });
+}, { force: true });
 
 console.log("\nURLs:");
 for (const id of touched) {

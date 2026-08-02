@@ -18,9 +18,13 @@ import { SourceUnavailableError, type AssetBlob, type AssetSource, type Discover
 
 /** Style contract minus the palette (the palette is per-game, see {@link styleWithPalette}). */
 export const BASE_STYLE =
-  "Flat vector illustration, bold geometric shapes, thick clean outlines, " +
-  "subtle paper grain. No photorealism, no heavy gradients, no drop shadows. " +
-  "Strong sans-serif title. Consistent board-game publisher house style.";
+  "Flat 2D vector illustration drawn perfectly straight-on, filling the whole " +
+  "canvas edge to edge. This is the printed cover ARTWORK itself, NOT a " +
+  "photograph of a box: no 3D box, no product mockup, no perspective, no box " +
+  "sides or thickness, no packaging, no shelf, no surrounding background, no " +
+  "drop shadow. Bold geometric shapes, thick clean outlines, subtle paper " +
+  "grain, no photorealism, no heavy gradients. Strong sans-serif title. " +
+  "Consistent board-game publisher house style.";
 
 /** Fallback palette when a game has no cover to sample. */
 export const DEFAULT_PALETTE = ["#f2e9d0", "#3fa39a", "#e0a83e", "#e5654e", "#1f2a44"];
@@ -62,8 +66,10 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
     );
   }
   return (
-    `Board game box FRONT COVER for the game titled "${name}". ${subject} ` +
-    `Iconic central illustration filling the frame, title clearly legible. ${style}`
+    `Flat 2D front-cover ARTWORK for the board game titled "${name}" — the ` +
+    `printed graphic drawn straight-on, filling the ENTIRE frame edge to edge. ` +
+    `NOT a 3D box, NOT a product render, NO perspective, NO box sides, NO shadow. ` +
+    `${subject} Iconic central illustration, title clearly legible. ${style}`
   );
 }
 
