@@ -25,6 +25,7 @@ export class AssetService {
     private readonly origin: BlobStore,
     private readonly cache: BlobStore,
     private readonly renderers: Map<string, AssetRenderer>,
+    private readonly cacheDerivatives = true,
   ) {}
 
   /** Write an original to both tiers (durable + local). */
@@ -56,6 +57,13 @@ export class AssetService {
     const renderer = this.renderers.get(baseKey.kind) ?? identity;
     const variant = renderer.variantName(params);
     if (variant === "original") return this.original(baseKey);
+
+    // Local dev (no cache tier): always re-render from the current original so a
+    // regenerated asset shows up immediately, never a stale derivative.
+    if (!this.cacheDerivatives) {
+      const original = await this.original(baseKey);
+      return original ? renderer.render(original, params) : null;
+    }
 
     // Cheap fingerprint (disk sidecar / GCS metadata) -> variant cache probe.
     const head = (await this.cache.head(baseKey)) ?? (await this.origin.head(baseKey));

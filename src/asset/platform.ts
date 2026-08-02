@@ -22,12 +22,13 @@ export interface AssetPlatform {
  */
 export function buildAssetPlatform(cfg: { dataDir: string } & SourcesConfig): AssetPlatform {
   const cache = new DiskBlobStore(join(cfg.dataDir, "assets"));
-  const origin = process.env.ASSETS_GCS_BUCKET ? new GcsBlobStore() : cache;
-  const service = new AssetService(origin, cache, buildRenderers());
+  const useCache = !!process.env.ASSETS_GCS_BUCKET;
+  const origin = useCache ? new GcsBlobStore() : cache;
+  const service = new AssetService(origin, cache, buildRenderers(), useCache);
   return {
     service,
     sources: buildSources({ bgg: cfg.bgg, ludopedia: cfg.ludopedia }),
-    serve: buildAssetRoutes(service),
+    serve: buildAssetRoutes(service, useCache),
     ingest: buildIngestRoute(service),
   };
 }

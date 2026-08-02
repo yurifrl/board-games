@@ -163,12 +163,12 @@ task gen-box-art -- --all                   # every game in the catalog
 
 The `gen-box-art` task loads `.env`, points credentials at the **assets** service
 account (`.secrets/gcs-key.json`, not the gcal one `.env` uses), and sets the
-bucket. It inherits `GEMINI_API_KEY` from your shell. Raw equivalent:
+bucket. It inherits `OPENAI_API_KEY` from your shell. Raw equivalent:
 
 ```bash
 env ASSETS_GCS_BUCKET=<bucket> \
     GOOGLE_APPLICATION_CREDENTIALS=$PWD/.secrets/gcs-key.json \
-    GEMINI_API_KEY=<key> \
+    OPENAI_API_KEY=<key> \
     bun run src/worker/gen-box-art.ts --name Clank
 ```
 
@@ -186,7 +186,7 @@ argo submit --from workflowtemplate/board-games-gen-box-art -p name="Clank"
 ```
 
 Parameters: `all` (`true`/`false`, default `true` — every game) and `name`
-(a game-name prefix that overrides `all`). Needs `GEMINI_API_KEY` in the app secret.
+(a game-name prefix that overrides `all`). Needs `OPENAI_API_KEY` in the app secret.
 
 ## Deploy (k8s)
 

@@ -138,7 +138,7 @@ body.view-spine .view-toggle { background: rgba(150,110,60,.9); }
 body.view-spine .shelf { display: none; }
 body.view-spine .spines {
   --pt: calc(84px + env(safe-area-inset-top));
-  --spinew: 54px; --rowh: 340px; --rowgap: 66px; --board: 26px;
+  --spinew: 104px; --rowh: 340px; --rowgap: 66px; --board: 26px;
   display: grid;
   grid-template-columns: repeat(auto-fill, var(--spinew));
   grid-auto-rows: var(--rowh);
@@ -303,7 +303,8 @@ body.view-spine .spines {
 .hub-head { display: flex; gap: 18px; align-items: flex-start; }
 .hub-cover { display: flex; flex-direction: column; gap: 10px; flex: none; width: 128px; }
 .hub-head .cover { width: 128px; flex: none; border-radius: 6px; box-shadow: 0 14px 40px #000a;
-  aspect-ratio: 3/4; object-fit: cover; animation: pop .4s cubic-bezier(.2,.7,.2,1) both; }
+  aspect-ratio: 3/4; animation: pop .4s cubic-bezier(.2,.7,.2,1) both; }
+.hub-head .cover img { object-fit: contain; }
 @keyframes pop { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
 .hub-head h1 { font-size: 26px; line-height: 1.1; margin-bottom: 8px; }
 .hub-head .links { margin-top: 6px; }

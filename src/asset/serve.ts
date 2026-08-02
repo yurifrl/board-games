@@ -23,8 +23,10 @@ function keyFrom(c: { req: { param: (n: string) => string } }): AssetKey | null 
   };
 }
 
-const respond = (bytes: Uint8Array, contentType: string): Response =>
-  new Response(bytes, { headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400" } });
+const respond = (bytes: Uint8Array, contentType: string, cache: boolean): Response =>
+  new Response(bytes, {
+    headers: { "Content-Type": contentType, "Cache-Control": cache ? "public, max-age=86400" : "no-store" },
+  });
 
 /**
  * Read-side routes. Browsers use signed URLs; AI agents use the shared bearer
@@ -32,7 +34,7 @@ const respond = (bytes: Uint8Array, contentType: string): Response =>
  * same {@link AssetService} — covers get resized per ?w/?h, rulebooks (and any
  * kind without a renderer) are served byte-for-byte.
  */
-export function buildAssetRoutes(service: AssetService): Hono {
+export function buildAssetRoutes(service: AssetService, cache = true): Hono {
   const app = new Hono();
 
   // Browser: signed URL, resize params allowed.
@@ -43,7 +45,7 @@ export function buildAssetRoutes(service: AssetService): Hono {
     if (!verifySigned(keyPath(key), query)) return c.text("Assinatura inválida", 401);
     const blob = await service.render(key, query);
     if (!blob) return c.text("Não encontrado", 404);
-    return respond(blob.bytes, blob.contentType);
+    return respond(blob.bytes, blob.contentType, cache);
   });
 
   // Agent: list a game's assets (optionally by kind).
@@ -61,7 +63,7 @@ export function buildAssetRoutes(service: AssetService): Hono {
     if (!key) return c.text("bad key", 400);
     const blob = await service.render(key, new URLSearchParams());
     if (!blob) return c.text("not found", 404);
-    return respond(blob.bytes, blob.contentType);
+    return respond(blob.bytes, blob.contentType, cache);
   });
 
   return app;

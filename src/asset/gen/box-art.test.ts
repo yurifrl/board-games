@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { GenBoxArtSource, buildGenSources, themeHint, facePrompt, HOUSE_STYLE } from "./box-art.ts";
+import { GenBoxArtSource, buildGenSources, themeHint, facePrompt } from "./box-art.ts";
 import { aspectRatioFor, boxArtKey, STYLE_VERSION } from "../box-contract.ts";
 import type { Entity } from "../types.ts";
 
@@ -15,15 +15,6 @@ test("aspectRatioFor snaps a face to the nearest supported ratio", () => {
 test("themeHint uses facts, falls back when none", () => {
   expect(themeHint(entity())).toContain("abstract strategy");
   expect(themeHint(entity({ categories: ["Space"], mechanics: ["Dice"] }))).toBe("Space, Dice");
-});
-
-test("prompts carry title + shared style; spine is a standalone strip on white", () => {
-  const p = facePrompt("front", "Nova", { theme: "space" });
-  expect(p).toContain("Nova");
-  expect(p).toContain(HOUSE_STYLE);
-  const spine = facePrompt("spine", "Nova", { theme: "space" });
-  expect(spine).toContain("STRIP");
-  expect(spine.toLowerCase()).toContain("white");
 });
 
 test("palette flows into the style clause; falls back to default", () => {

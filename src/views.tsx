@@ -20,7 +20,7 @@ export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400
 // drops itself (onerror), revealing the tinted default spine underneath.
 export function signedSpine(entity: string): string {
   const key = boxArtKey(entity, "spine");
-  return `/asset/${entity}/spine/gen/${key.variant}.${key.ext}?${sign(key, { w: 120 })}`;
+  return `/asset/${entity}/spine/gen/${key.variant}.${key.ext}?${sign(key, { w: 208, h: 628 })}`;
 }
 
 const coverSrc = (g: Game, w = 400, h?: number): string => {
@@ -51,10 +51,10 @@ export { Layout };
 
 // Tinted title-card placeholder shows when a game has no cover source or the
 // image 404s (onerror drops the img, revealing the card underneath).
-const CoverImg: FC<{ g: Game; cls: string; w?: number; h?: number }> = ({ g, cls, w, h }) => {
+const CoverImg: FC<{ g: Game; cls: string; w?: number; h?: number; ar?: string }> = ({ g, cls, w, h, ar }) => {
   const src = coverSrc(g, w, h);
   return (
-    <span class={`${cls} cover-ph`} style={`--tint:${g.tint ?? "#3a3a44"}`} data-name={g.name}>
+    <span class={`${cls} cover-ph`} style={`--tint:${g.tint ?? "#3a3a44"}${ar ? `;aspect-ratio:${ar}` : ""}`} data-name={g.name}>
       {src ? <img src={src} alt={g.name} loading="lazy" onerror="this.remove()" /> : null}
     </span>
   );
@@ -198,7 +198,7 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
           <a class="close" href="#" aria-label="Fechar">✕</a>
           <div class="hub-head">
             <div class="hub-cover">
-              <CoverImg g={g} cls="cover" />
+              <CoverImg g={g} cls="cover" ar={g.dimensions ? `${g.dimensions.widthCm}/${g.dimensions.heightCm}` : undefined} />
               <a class="btn play declare" href={perm.email ? `/game/${g.id}/play` : `/auth/google?game=${g.id}`}>🗓 Quero jogar</a>
             </div>
             <div>

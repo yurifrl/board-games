@@ -92,11 +92,11 @@ spec:
             echo "gen-box-art $ARGS"
             exec bun run src/worker/gen-box-art.ts $ARGS
         env:
-          - name: GEMINI_API_KEY
+          - name: OPENAI_API_KEY
             valueFrom:
               secretKeyRef:
                 name: {{ .Values.secretName }}
-                key: GEMINI_API_KEY
+                key: OPENAI_API_KEY
           {{- include "board-games.workerEnv" . | nindent 10 }}
         volumeMounts:
           - name: data

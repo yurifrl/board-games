@@ -17,14 +17,15 @@ export interface PipelineResult {
  * (fingerprint compare); a temporarily-unavailable source is deferred without
  * affecting the others. With `force`, the fingerprint check is skipped so every
  * asset is re-pulled from source and overwritten — the manual "fix everything"
- * path for stale/wrong covers.
+ * path for stale/wrong covers. `concurrency` (default 1) processes that many
+ * entities at once — used by the box-art generator to fan slow image calls out.
  */
 export async function runPipeline(
   entities: Entity[],
   sources: AssetSource[],
   service: AssetService,
   onResult?: (r: PipelineResult) => void,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; concurrency?: number } = {},
 ): Promise<PipelineResult[]> {
   const out: PipelineResult[] = [];
   const record = (r: PipelineResult) => {
@@ -32,7 +33,7 @@ export async function runPipeline(
     onResult?.(r);
   };
 
-  for (const e of entities) {
+  const processEntity = async (e: Entity) => {
     for (const source of sources) {
       let discovered;
       try {
@@ -55,6 +56,13 @@ export async function runPipeline(
         }
       }
     }
-  }
+  };
+
+  const concurrency = Math.max(1, opts.concurrency ?? 1);
+  let next = 0;
+  const worker = async () => {
+    while (next < entities.length) await processEntity(entities[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, entities.length) }, worker));
   return out;
 }

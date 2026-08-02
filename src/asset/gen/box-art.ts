@@ -13,7 +13,6 @@ import {
   BOX_ART_FORMAT, BOX_ART_SOURCE, FACES, STYLE_VERSION,
   aspectRatioFor, boxArtKey, type BoxDims, type Face,
 } from "../box-contract.ts";
-import { trimBackground } from "../tint.ts";
 import { SourceUnavailableError, type AssetBlob, type AssetSource, type DiscoveredAsset, type Entity } from "../types.ts";
 
 /** Style contract minus the palette (the palette is per-game, see {@link styleWithPalette}). */
@@ -22,11 +21,10 @@ export const BASE_STYLE =
   "canvas edge to edge. This is the printed cover ARTWORK itself, NOT a " +
   "photograph of a box: no 3D box, no product mockup, no perspective, no box " +
   "sides or thickness, no packaging, no shelf, no surrounding background, no " +
-  "drop shadow. Bold geometric shapes, thick clean outlines, subtle paper " +
-  "grain, no photorealism, no heavy gradients. Strong sans-serif title. " +
+  "drop shadow. Bold geometric shapes, thick clean outlines" +
+  "no photorealism, no heavy gradients." +
   "Prefer scenery, architecture, objects and atmosphere; avoid depicting people " +
-  "or human figures, for a warm cozy mood. " +
-  "Consistent board-game publisher house style.";
+  "or human figures, for a warm cozy mood. ";
 
 /** Fallback palette when a game has no cover to sample. */
 export const DEFAULT_PALETTE = ["#f2e9d0", "#3fa39a", "#e0a83e", "#e5654e", "#1f2a44"];
@@ -58,18 +56,28 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
   const parts = [input.description, input.artNote].map((s) => s?.trim()).filter(Boolean);
   const subject = parts.length ? `What it's about: ${parts.join(" ")}` : `Evoke its theme: ${input.theme}.`;
   if (face === "spine") {
+    const palette = (input.palette?.length ? input.palette : DEFAULT_PALETTE).join(", ");
+    const stacked = name.toUpperCase().split("").map((ch) => (ch === " " ? "" : ch)).join("\n");
     return (
-      `A flat 2D vertical STRIP graphic for the board game "${name}", drawn perfectly ` +
-      `straight-on and standing ALONE on a solid pure-white (#ffffff) background so it ` +
-      `can be cropped out. The strip is a flat tall rectangle, NOT a 3D box, NOT a ` +
-      `product render, NO perspective, NO angle, NO box sides/edges/thickness, NO ` +
-      `shadow. Inside the strip: an illustrated BACKGROUND scene evoking the game (do ` +
-      `NOT copy the front cover), and over it in the FOREGROUND the game name ` +
-      `"${name}" ROTATED 90° to run vertically down the strip like a book-spine ` +
-      `title, reading TOP-TO-BOTTOM (sideways letters, NOT upright horizontal ` +
-      `text), spelled exactly once, large, bold, fully legible and NEVER ` +
-      `obstructed, high contrast, running the length of the strip. NO logo, NO ` +
-      `emblem, NO icons. ${subject} ${style}`
+      `Generate a flat front view of a single book spine (not 3D), the title ` +
+      `centered.\n\nDisplay EXACTLY this text (no extra or missing characters), ` +
+      `as UPRIGHT letters (do NOT rotate them) stacked from top to ` +
+      `bottom:\n\n${stacked}\n\nMake the letters SMALL enough that the ENTIRE ` +
+      `title fits with clear margins at the top and bottom, never running off any ` +
+      `edge. For long or multi-word titles, BREAK the title into two or more ` +
+      `side-by-side vertical columns of upright stacked letters (for example one ` +
+      `column per word) rather than a single over-long stack. Keep the whole ` +
+      `title block bold, high-contrast and centered in the middle of the spine, ` +
+      `away from the left and right edges. Behind them, a richly textured ` +
+      `illustrated background scene evoking the game fills the whole image edge to ` +
+      `edge — NO frame, NO border, NO panel, NO cartouche, NO boxes or delimited ` +
+      `boundaries of any kind. Layer 2-3 foreground elements (a branch, an object ` +
+      `or motif) that cross OVER the letters, clearly in FRONT of the title, for ` +
+      `depth. Let the background and overlapping elements bleed outward into the ` +
+      `side margins, which will be cropped away. ${subject} Do NOT depict any ` +
+      `people, human figures, silhouettes, crowds, hands or faces. Flat graphic ` +
+      `design only — no perspective, no mockup, no 3D render. Use a cohesive ` +
+      `limited palette derived from these colors: ${palette}.`
     );
   }
   return (
@@ -83,33 +91,38 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
 /** prompt (+ aspect ratio) → PNG bytes. The only seam onto an actual model. */
 export type ImageGen = (prompt: string, aspectRatio: string) => Promise<Uint8Array>;
 
-const GEMINI_MODEL = "gemini-2.5-flash-image";
+const OPENAI_MODEL = "gpt-image-1";
 
-/** Default {@link ImageGen} backed by Gemini's image model. */
-export function geminiImageGen(apiKey: string, model = GEMINI_MODEL): ImageGen {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+/** gpt-image-1 supports a fixed set of sizes; map a face's aspect ratio to the nearest. */
+function openaiSize(aspectRatio: string): string {
+  const [w, h] = aspectRatio.split(":").map(Number);
+  const r = w / h;
+  if (r <= 0.8) return "1024x1536"; // portrait (spine, tall covers)
+  if (r >= 1.25) return "1536x1024"; // landscape
+  return "1024x1024"; // square
+}
+
+/** Default {@link ImageGen} backed by OpenAI's gpt-image-1. */
+export function openaiImageGen(apiKey: string, model = OPENAI_MODEL): ImageGen {
   return async (prompt, aspectRatio) => {
-    const res = await fetch(url, {
+    const res = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { imageConfig: { aspectRatio } },
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, prompt, size: openaiSize(aspectRatio), n: 1 }),
     });
-    if (res.status === 429) throw new SourceUnavailableError(BOX_ART_SOURCE, "gemini image rate-limited (429)");
-    if (!res.ok) throw new Error(`gemini image ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (res.status === 429) throw new SourceUnavailableError(BOX_ART_SOURCE, "openai image rate-limited (429)");
+    if (!res.ok) throw new Error(`openai image ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    const inline = data?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
-    if (!inline) throw new Error(`gemini returned no image for prompt: ${prompt.slice(0, 60)}…`);
-    return Uint8Array.from(Buffer.from(inline, "base64"));
+    const b64 = data?.data?.[0]?.b64_json;
+    if (!b64) throw new Error(`openai returned no image for prompt: ${prompt.slice(0, 60)}…`);
+    return Uint8Array.from(Buffer.from(b64, "base64"));
   };
 }
 
 export interface GenConfig {
-  /** GEMINI_API_KEY. When absent the source is inert (discovers nothing). */
+  /** OPENAI_API_KEY. When absent the source is inert (discovers nothing). */
   apiKey?: string;
-  /** Test seam — defaults to {@link geminiImageGen}. */
+  /** Test seam — defaults to {@link openaiImageGen}. */
   gen?: ImageGen;
 }
 
@@ -123,7 +136,7 @@ export class GenBoxArtSource implements AssetSource {
   private readonly gen?: ImageGen;
 
   constructor(readonly kind: Face, cfg: GenConfig = {}) {
-    this.gen = cfg.gen ?? (cfg.apiKey ? geminiImageGen(cfg.apiKey) : undefined);
+    this.gen = cfg.gen ?? (cfg.apiKey ? openaiImageGen(cfg.apiKey) : undefined);
   }
 
   async discover(e: Entity): Promise<DiscoveredAsset[]> {
@@ -132,15 +145,12 @@ export class GenBoxArtSource implements AssetSource {
     const key = boxArtKey(e.id, this.kind);
     const prompt = facePrompt(this.kind, e.name, { theme, description: e.description, artNote: e.artNote, palette: e.palette });
     const ratio = aspectRatioFor(this.kind, e.dims);
-    const isSpine = this.kind === "spine";
     return [
       {
         key,
         fingerprint: `gen:${STYLE_VERSION}:${this.kind}:${e.name}|${theme}|${e.description ?? ""}|${e.artNote ?? ""}|${(e.palette ?? []).join(",")}`,
         fetch: async () => {
-          const raw = await this.gen!(prompt, ratio);
-          // Spine stands alone on white — trim to just the strip so the shelf shows only the spine.
-          const bytes = isSpine ? await trimBackground(raw) : raw;
+          const bytes = await this.gen!(prompt, ratio);
           return { bytes, contentType: `image/${BOX_ART_FORMAT}` };
         },
       },

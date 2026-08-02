@@ -63,7 +63,7 @@ function select(games: Game[], argv: string[]): Game[] {
   if (argv.includes("--all")) return games;
   const nameIdx = argv.indexOf("--name");
   if (nameIdx !== -1) {
-    const needles = argv.slice(nameIdx + 1).map((s) => s.toLowerCase());
+    const needles = argv.slice(nameIdx + 1).flatMap((s) => s.split(",")).map((s) => s.trim().toLowerCase()).filter(Boolean);
     return games.filter((g) => needles.some((n) => g.name.toLowerCase().startsWith(n)));
   }
   const ids = new Set(argv);
@@ -79,9 +79,9 @@ async function urlFor(id: string, face: (typeof FACES)[number]): Promise<string>
   return url;
 }
 
-const apiKey = env("GEMINI_API_KEY");
+const apiKey = env("OPENAI_API_KEY");
 if (!apiKey) {
-  console.error("GEMINI_API_KEY is required");
+  console.error("OPENAI_API_KEY is required");
   process.exit(1);
 }
 
@@ -108,7 +108,7 @@ await runPipeline(entities, sources, service, (r) => {
   const name = chosen.find((x) => x.id === r.entity)?.name ?? r.entity;
   console.log(`  ${r.outcome.padEnd(9)} ${r.kind.padEnd(5)} ${name}`);
   if (r.outcome === "stored" || r.outcome === "unchanged") touched.add(r.entity);
-}, { force: true });
+}, { force: true, concurrency: chosen.length > 1 ? 5 : 1 });
 
 console.log("\nURLs:");
 for (const id of touched) {
