@@ -56,7 +56,7 @@ gcsSecretName: board-games-gcs-creds
 # Needs GEMINI_API_KEY in `secretName` and (for upload) assetsGcsBucket set.
 # Requires Argo Workflows in the cluster.
 genBoxArt:
-  enabled: false
+  enabled: true
 
 # Pin the pod to a node. Needed on this cluster because longhorn's cross-node
 # data path is unreliable: the volume attaches cleanly only when the pod runs
