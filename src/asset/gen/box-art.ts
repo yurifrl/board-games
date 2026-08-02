@@ -59,16 +59,15 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
     const palette = (input.palette?.length ? input.palette : DEFAULT_PALETTE).join(", ");
     const upper = name.toUpperCase();
     const letters = upper.replace(/\s+/g, "");
-    const stacked = upper.split("").map((ch) => (ch === " " ? "" : ch)).join("\n");
-    const spelled = letters.split("").join("-");
+    const spelled = upper.split(/\s+/).map((w) => w.split("").join("-")).join("  /  ");
     return (
       `Generate a flat front view of a single book spine (not 3D), the title ` +
-      `centered.\n\nDisplay EXACTLY this text (no extra, missing, doubled or ` +
-      `reordered letters), every letter UPRIGHT — never rotated, never on its ` +
-      `side, never a horizontal word. Stack the letters vertically, one per line, ` +
-      `top to bottom:\n\n${stacked}\n\nThe title is spelled ${spelled} ` +
-      `(${letters.length} letters); render every one of these ${letters.length} ` +
-      `letters, in this exact order, none skipped and none added. CRITICAL: the ` +
+      `centered.\n\nWrite the exact title "${upper}" VERTICALLY as a single ` +
+      `column: each letter UPRIGHT (never rotated, never on its side, never a ` +
+      `horizontal word), stacked directly below the previous one from top to ` +
+      `bottom. It is spelled ${spelled} — exactly ${letters.length} letters in ` +
+      `this order; none skipped, none added, none doubled. Proofread the letters ` +
+      `before finishing. CRITICAL: the ` +
       `ENTIRE title (all ${letters.length} letters) MUST fit inside the spine ` +
       `with clear top and bottom margins — no letter may be cut off or run past ` +
       `any edge. Make the ` +
