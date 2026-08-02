@@ -171,15 +171,25 @@ function bggItems(xml: string): Map<string, string> {
   return items;
 }
 
+// ponytail: fixed spacing between requests; a token-bucket limiter if the API publishes real limits
+const LUDOPEDIA_THROTTLE_MS = 700;
+
+class LudopediaBanError extends Error {
+  constructor(body: string) {
+    super(body.match(/"error":"([^"]+)/)?.[1] ?? "429");
+    this.name = "LudopediaBanError";
+  }
+}
+
 async function fetchLudopedia(id: string, token: string, request: Fetcher): Promise<unknown> {
   const headers = { Authorization: `Bearer ${token}` };
   const get = async (suffix: string, required = false) => {
+    await new Promise((r) => setTimeout(r, LUDOPEDIA_THROTTLE_MS));
     const response = await request(`https://ludopedia.com.br/api/v1/jogos/${id}${suffix}`, { headers });
-    if (!response.ok) {
-      if (!required && response.status === 404) return null;
-      throw new Error(`ludopedia ${id}: ${response.status}`);
-    }
-    return response.json();
+    if (response.ok) return response.json();
+    if (!required && response.status === 404) return null;
+    if (response.status === 429) throw new LudopediaBanError(await response.text().catch(() => ""));
+    throw new Error(`ludopedia ${id}: ${response.status}`);
   };
   return {
     detail: await get("", true),
@@ -242,6 +252,10 @@ export async function enrichProviderData(games: Game[], options: Options): Promi
         await writeSnapshot(cachePath(options.dataDir, "ludopedia", id), snapshot);
       } catch (error) {
         console.error(`  ludopedia metadata ${id}: ${(error as Error).message}`);
+        if (error instanceof LudopediaBanError) {
+          console.error("  ludopedia: rate-limited/banned — skipping remaining ludopedia fetches this run");
+          break;
+        }
       }
     }
   }
