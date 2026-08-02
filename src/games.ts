@@ -13,6 +13,8 @@ export type Game = {
   price?: string;
   purchaseSource?: string;
   purchaseDate?: string;
+  /** `parted/date` — set when the game left the collection (sold/traded/gifted). */
+  partedDate?: string;
   tags: string[];
   playTime?: number;
   played?: boolean;

@@ -108,6 +108,7 @@ function mapGame(fm: Record<string, unknown>, body: string): Game | null {
     price: str(fm["price"]),
     purchaseSource: str(fm["purchase/source"]),
     purchaseDate: str(fm["purchase/date"]),
+    partedDate: str(fm["parted/date"]),
     tags,
     playTime: positiveNumber(fm["play_time"] ?? fm["play-time"]),
     played: typeof fm["played"] === "boolean" ? fm["played"] : undefined,
