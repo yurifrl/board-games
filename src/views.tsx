@@ -121,6 +121,7 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
       class={`box${size ? " sized" : ""}${grp.expansions.length ? " has-expansions" : ""}`}
       href={`#g-${g.id}`}
       style={`--tint:${tint}${sizeStyle}`}
+      data-id={g.id}
       data-search={search}
       data-type={games.map((game) => (game.type ?? game.facts?.type ?? "game").toLowerCase()).join("|")}
       data-category={games.flatMap((game) => game.tags.map((tag) => tag.toLowerCase())).join("|")}
@@ -173,7 +174,7 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
 const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
   const g = grp.base;
   return (
-    <a class="spine" href={`#g-${g.id}`} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
+    <a class="spine" href={`#g-${g.id}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
       <span class="spine-name">{g.name}</span>
       <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" onerror="this.remove()" />
     </a>
@@ -542,6 +543,7 @@ export function collectionPage(opts: {
           __html: `
             (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.textContent=spine?'Estante':'Lombadas';}apply(localStorage.getItem('gameView')||'shelf');vt.addEventListener('click',function(){var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);});})();
             var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf');
+            var spinesEl=document.querySelector('.spines'),spineById={};if(spinesEl)Array.from(spinesEl.querySelectorAll('.spine')).forEach(function(s){spineById[s.dataset.id]=s;});function spineOf(b){return spineById[b.dataset.id];}
             boxes.forEach(function(b){if(b.classList.contains('sized'))return;var i=b.querySelector('img');if(!i)return;var size=function(){if(i.naturalWidth)b.style.aspectRatio=i.naturalWidth+'/'+i.naturalHeight;};i.complete?size():i.addEventListener('load',size);});
             if(matchMedia('(hover: none), (pointer: coarse)').matches){var expansionObserver=new IntersectionObserver(function(entries){entries.forEach(function(entry){entry.target.classList.toggle('exp-active',entry.isIntersecting);});},{rootMargin:'-35% 0px -35% 0px'});boxes.filter(function(b){return b.classList.contains('has-expansions');}).forEach(function(b){expansionObserver.observe(b);});}
             var controls={search:document.querySelector('#game-search'),type:document.querySelector('#game-type'),category:document.querySelector('#game-category'),providerCategory:document.querySelector('#game-provider-category'),playtime:document.querySelector('#game-playtime'),players:document.querySelector('#game-players'),complexity:document.querySelector('#game-complexity'),rating:document.querySelector('#game-rating'),year:document.querySelector('#game-year'),mechanic:document.querySelector('#game-mechanic'),designer:document.querySelector('#game-designer'),publisher:document.querySelector('#game-publisher'),languageDependency:document.querySelector('#game-language-dependency'),played:document.querySelector('#game-played'),language:document.querySelector('#game-language'),sale:document.querySelector('#game-sale')};
@@ -568,8 +570,8 @@ export function collectionPage(opts: {
             function matchesBox(b,values){var d=b.dataset;return(!values.search||d.search.includes(values.search))&&includes(d.type,values.type)&&includes(d.category,values.category)&&includes(d.providerCategory,values.providerCategory)&&includes(d.mechanic,values.mechanic)&&includes(d.designer,values.designer)&&includes(d.publisher,values.publisher)&&includes(d.languageDependency,values.languageDependency)&&(!values.played||d.played===values.played)&&includes(d.language,values.language)&&(!values.sale||d.sale===values.sale)&&matchesTime(d.playtime,values.playtime)&&matchesPlayers(d,values.players)&&matchesComplexity(d.complexity,values.complexity)&&(!values.rating||Number(d.rating)>=Number(values.rating))&&(!values.year||d.year===values.year);}
             function updateFacets(values){Object.keys(controls).forEach(function(k){var control=controls[k];if(!control||!control.matches('fieldset'))return;control.querySelectorAll('.choice-options input').forEach(function(radio){var candidate=Object.assign({},values);candidate[k]=radio.value.toLowerCase();var total=boxes.filter(function(b){return matchesBox(b,candidate);}).length;radio.disabled=total===0&&!radio.checked;var label=radio.nextElementSibling;label.textContent=label.dataset.filterLabel+' ('+total+')';});});}
             function applyFilters(){
-              var values=getValues(),sortValue=sort.querySelector('input:checked').value,visible=boxes.filter(function(b){var show=matchesBox(b,values);b.hidden=!show;return show;});
-              visible.sort(function(a,b){if(sortValue==='name')return a.dataset.name.localeCompare(b.dataset.name);var av=Number(sortValue==='newest'?a.dataset.purchased:a.dataset.playtime)||0,bv=Number(sortValue==='newest'?b.dataset.purchased:b.dataset.playtime)||0;return sortValue==='playtime-asc'?(av||Infinity)-(bv||Infinity):bv-av;}).forEach(function(b){shelf.appendChild(b);});
+              var values=getValues(),sortValue=sort.querySelector('input:checked').value,visible=boxes.filter(function(b){var show=matchesBox(b,values);b.hidden=!show;var s=spineOf(b);if(s)s.hidden=!show;return show;});
+              visible.sort(function(a,b){if(sortValue==='name')return a.dataset.name.localeCompare(b.dataset.name);var av=Number(sortValue==='newest'?a.dataset.purchased:a.dataset.playtime)||0,bv=Number(sortValue==='newest'?b.dataset.purchased:b.dataset.playtime)||0;return sortValue==='playtime-asc'?(av||Infinity)-(bv||Infinity):bv-av;}).forEach(function(b){shelf.appendChild(b);var s=spineOf(b);if(s&&spinesEl)spinesEl.appendChild(s);});
               updateFacets(values);optionSearches.forEach(filterOptions);var active=Object.keys(values).filter(function(k){return values[k];});results.textContent=visible.length+(visible.length===1?' jogo':' jogos');empty.hidden=visible.length!==0;clear.hidden=active.length===0;count.hidden=active.length===0;count.textContent=String(active.length);
               chips.replaceChildren();active.forEach(function(k){var control=controls[k],input=control.matches('fieldset')?control.querySelector('input:checked'):control,label=k==='search'?'“'+input.value+'”':input.nextElementSibling.dataset.filterLabel;var chip=document.createElement('button');chip.type='button';chip.textContent=label+' ×';chip.onclick=function(){if(control.matches('fieldset'))control.querySelector('.choice-options input').checked=true;else control.value='';applyFilters();};chips.appendChild(chip);});
             }
