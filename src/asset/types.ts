@@ -52,6 +52,8 @@ export interface Entity {
   /** Theme signal for generated box art (from provider facts). */
   categories?: string[];
   mechanics?: string[];
+  /** Palette (`#rrggbb[]`) extracted from the real cover, to theme generated art. */
+  palette?: string[];
   /** Physical box dimensions, for box-art aspect ratios + the 3D shelf. */
   dims?: import("./box-contract.ts").BoxDims;
 }

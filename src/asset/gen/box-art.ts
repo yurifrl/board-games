@@ -13,15 +13,26 @@ import {
   BOX_ART_FORMAT, BOX_ART_SOURCE, FACES, STYLE_VERSION,
   aspectRatioFor, boxArtKey, type BoxDims, type Face,
 } from "../box-contract.ts";
+import { trimBackground } from "../tint.ts";
 import { SourceUnavailableError, type AssetBlob, type AssetSource, type DiscoveredAsset, type Entity } from "../types.ts";
 
-/** The shared visual contract. Change this (and bump STYLE_VERSION) → whole shelf restyles. */
-export const HOUSE_STYLE =
+/** Style contract minus the palette (the palette is per-game, see {@link styleWithPalette}). */
+export const BASE_STYLE =
   "Flat vector illustration, bold geometric shapes, thick clean outlines, " +
-  "subtle paper grain, limited cohesive palette (cream #f2e9d0, teal #3fa39a, " +
-  "mustard #e0a83e, coral #e5654e, deep navy #1f2a44). No photorealism, no " +
-  "heavy gradients, no drop shadows. Centered strong sans-serif title. " +
-  "Consistent board-game publisher house style across the whole line.";
+  "subtle paper grain. No photorealism, no heavy gradients, no drop shadows. " +
+  "Strong sans-serif title. Consistent board-game publisher house style.";
+
+/** Fallback palette when a game has no cover to sample. */
+export const DEFAULT_PALETTE = ["#f2e9d0", "#3fa39a", "#e0a83e", "#e5654e", "#1f2a44"];
+
+/** BASE_STYLE plus the palette clause — every face of a game shares its palette. */
+export function styleWithPalette(palette?: string[]): string {
+  const p = (palette?.length ? palette : DEFAULT_PALETTE).join(", ");
+  return `${BASE_STYLE} Use a cohesive limited palette derived from these colors: ${p}.`;
+}
+
+/** Back-compat default style (default palette). */
+export const HOUSE_STYLE = styleWithPalette();
 
 /** Motif words drawn from the entity's own facts — the per-game half of the prompt. */
 export function themeHint(e: Entity): string {
@@ -29,18 +40,21 @@ export function themeHint(e: Entity): string {
   return bits.length ? bits.join(", ") : "abstract strategy board game";
 }
 
-export function facePrompt(face: Face, name: string, theme: string): string {
+export function facePrompt(face: Face, name: string, theme: string, palette?: string[]): string {
+  const style = styleWithPalette(palette);
   if (face === "spine") {
     return (
-      `Board game box SPINE only — a tall narrow vertical strip, the thin edge ` +
-      `seen on a shelf — for the game titled "${name}". Vertical title text ` +
-      `"${name}" reading bottom-to-top, a small emblem icon matching the cover, ` +
-      `theme hint: ${theme}. ${HOUSE_STYLE}`
+      `ONLY a board game box SPINE — a single tall narrow rectangular strip, the ` +
+      `thin shelf-facing edge — for "${name}". The strip fills the full height of ` +
+      `the image and stands ALONE on a solid flat pure-white (#ffffff) background ` +
+      `with nothing else: no scene, no feature icons, no list. On the strip: the ` +
+      `vertical title "${name}" reading bottom-to-top and one small emblem at the ` +
+      `top. Theme hint: ${theme}. ${style}`
     );
   }
   return (
     `Board game box FRONT COVER for the game titled "${name}". Evoke its theme: ` +
-    `${theme}. Iconic central illustration with the title clearly legible. ${HOUSE_STYLE}`
+    `${theme}. Iconic central illustration filling the frame, title clearly legible. ${style}`
   );
 }
 
@@ -94,16 +108,19 @@ export class GenBoxArtSource implements AssetSource {
     if (!this.gen) return [];
     const theme = themeHint(e);
     const key = boxArtKey(e.id, this.kind);
-    const prompt = facePrompt(this.kind, e.name, theme);
+    const prompt = facePrompt(this.kind, e.name, theme, e.palette);
     const ratio = aspectRatioFor(this.kind, e.dims);
+    const isSpine = this.kind === "spine";
     return [
       {
         key,
-        fingerprint: `gen:${STYLE_VERSION}:${this.kind}:${e.name}|${theme}`,
-        fetch: async () => ({
-          bytes: await this.gen!(prompt, ratio),
-          contentType: `image/${BOX_ART_FORMAT}`,
-        }),
+        fingerprint: `gen:${STYLE_VERSION}:${this.kind}:${e.name}|${theme}|${(e.palette ?? []).join(",")}`,
+        fetch: async () => {
+          const raw = await this.gen!(prompt, ratio);
+          // Spine stands alone on white — trim to just the strip so the shelf shows only the spine.
+          const bytes = isSpine ? await trimBackground(raw) : raw;
+          return { bytes, contentType: `image/${BOX_ART_FORMAT}` };
+        },
       },
     ];
   }

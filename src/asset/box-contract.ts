@@ -27,7 +27,7 @@ export interface BoxDims {
 }
 
 /** Bump when {@link import("./box-art.ts").HOUSE_STYLE} or prompts change, to re-generate all art. */
-export const STYLE_VERSION = "v1";
+export const STYLE_VERSION = "v2";
 
 /** The stored format for generated box art. */
 export const BOX_ART_FORMAT = "png" as const;

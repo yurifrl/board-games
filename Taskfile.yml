@@ -28,3 +28,15 @@ tasks:
     dotenv: ['.env']
     cmds:
       - bun run src/worker/index.ts
+
+  gen-box-art:
+    desc: "Generate flat-vector box art (front+spine) and upload to the assets bucket. Usage: task gen-box-art -- --name Clank | <game-id ...> | --all"
+    deps: [envs:op]
+    dotenv: ['.env']
+    env:
+      # GCS upload needs the ASSETS service account (not the gcal one .env points at)
+      # and the bucket name, which lives only in the chart otherwise.
+      GOOGLE_APPLICATION_CREDENTIALS: '{{.ROOT_DIR}}/.secrets/gcs-key.json'
+      ASSETS_GCS_BUCKET: syscd-board-games-assets-d2a20e60-741d-43d4-a9b1-b2c4529e255d
+    cmds:
+      - bun run src/worker/gen-box-art.ts {{.CLI_ARGS}}

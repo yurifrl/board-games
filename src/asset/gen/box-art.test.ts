@@ -17,11 +17,18 @@ test("themeHint uses facts, falls back when none", () => {
   expect(themeHint(entity({ categories: ["Space"], mechanics: ["Dice"] }))).toBe("Space, Dice");
 });
 
-test("prompts carry title + shared style; spine is vertical", () => {
+test("prompts carry title + shared style; spine is a standalone strip on white", () => {
   const p = facePrompt("front", "Nova", "space");
   expect(p).toContain("Nova");
   expect(p).toContain(HOUSE_STYLE);
-  expect(facePrompt("spine", "Nova", "space")).toContain("SPINE");
+  const spine = facePrompt("spine", "Nova", "space");
+  expect(spine).toContain("SPINE");
+  expect(spine.toLowerCase()).toContain("white");
+});
+
+test("palette flows into the style clause; falls back to default", () => {
+  expect(facePrompt("front", "Nova", "x", ["#111111", "#222222"])).toContain("#111111, #222222");
+  expect(facePrompt("front", "Nova", "x")).toContain("#f2e9d0");
 });
 
 test("boxArtKey addresses the gen source per face", () => {
