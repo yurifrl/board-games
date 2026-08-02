@@ -81,8 +81,8 @@ spec:
     version: latest
     replicas: 3
 ---
-# Watches the obsidian namespace for a vault-sync Workflow that Succeeded and
-# was labelled board-games-inventory-changed=true.
+# Watches the obsidian namespace for any vault-sync Workflow that Succeeded.
+# Whether the change concerns us is decided by the Sensor below, not here.
 apiVersion: argoproj.io/v1alpha1
 kind: EventSource
 metadata:
@@ -101,10 +101,6 @@ spec:
       eventTypes:
         - UPDATE
       filter:
-        labels:
-          - key: board-games-inventory-changed
-            operation: "=="
-            value: "true"
         fields:
           - key: status.phase
             operation: "=="
@@ -123,6 +119,15 @@ spec:
     - name: obsidian-synced
       eventSourceName: {{ $fullname }}-obsidian-watch
       eventName: obsidian-sync
+      # Only fire when the sync's changed-files annotation touches our folder.
+      # This is where board-games owns the run/skip decision.
+      filters:
+        data:
+          - path: body.metadata.annotations.changed-files
+            type: string
+            comparator: "="
+            value:
+              - {{ .Values.worker.inventoryFolder | quote }}
   triggers:
     - template:
         name: submit-board-games-sync
