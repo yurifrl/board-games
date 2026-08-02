@@ -57,33 +57,30 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
   const subject = parts.length ? `What it's about: ${parts.join(" ")}` : `Evoke its theme: ${input.theme}.`;
   if (face === "spine") {
     const palette = (input.palette?.length ? input.palette : DEFAULT_PALETTE).join(", ");
-    const words = name.toUpperCase().split(/\s+/).filter(Boolean);
-    let cols: string[];
-    if (words.length > 1) cols = words;
-    else {
-      const w = words[0] ?? "";
-      cols = w.length > 7 ? [w.slice(0, Math.ceil(w.length / 2)), w.slice(Math.ceil(w.length / 2))] : [w];
-    }
-    const colText = cols.map((c, i) => `Column ${i + 1}: ${c.split("").join(" ")}`).join("\n");
+    const upper = name.toUpperCase();
+    const letters = upper.replace(/\s+/g, "");
+    const stacked = upper.split("").map((ch) => (ch === " " ? "" : ch)).join("\n");
     return (
       `Generate a flat front view of a single book spine (not 3D), the title ` +
-      `centered.\n\nRender the title "${name}" as ${cols.length} vertical ` +
-      `column(s) of UPRIGHT letters placed SIDE BY SIDE (left to right); within ` +
-      `each column the letters are stacked top-to-bottom and are NOT rotated. Use ` +
-      `exactly these letters, nothing added or missing:\n\n${colText}\n\nMake the ` +
-      `letters small enough that every column fits top-to-bottom with clear ` +
-      `margins and nothing runs off an edge. Keep all columns together as one ` +
-      `bold, high-contrast title block centered in the middle of the spine, away ` +
-      `from the left and right edges. Behind them, a richly textured illustrated ` +
-      `background scene evoking the game fills the whole image edge to edge — NO ` +
-      `frame, NO border, NO panel, NO cartouche, NO boxes or delimited boundaries ` +
-      `of any kind. Layer 2-3 foreground elements (a branch, an object or motif) ` +
-      `that cross OVER the letters, clearly in FRONT of the title, for depth. Let ` +
-      `the background and overlapping elements bleed outward into the side ` +
-      `margins, which will be cropped away. ${subject} Do NOT depict any people, ` +
-      `human figures, silhouettes, crowds, hands or faces. Flat graphic design ` +
-      `only — no perspective, no mockup, no 3D render. Use a cohesive limited ` +
-      `palette derived from these colors: ${palette}.`
+      `centered.\n\nDisplay EXACTLY this text (no extra, missing, doubled or ` +
+      `reordered letters). Write ONE letter per line, each letter UPRIGHT and ` +
+      `stacked directly beneath the previous one in a SINGLE vertical column down ` +
+      `the centre. Do NOT rotate the letters. Do NOT place two letters side by ` +
+      `side. Do NOT write any word horizontally or on its side. Blank lines ` +
+      `separate words:\n\n${stacked}\n\nThe title has ${letters.length} letters ` +
+      `— size them SMALL enough that the whole vertical stack fits from top to ` +
+      `bottom with clear margins and nothing runs off any edge. Keep the stack ` +
+      `bold, high-contrast and centred, away from the left and right edges. ` +
+      `Behind it, a richly textured illustrated background scene evoking the game ` +
+      `fills the whole image edge to edge — NO frame, NO border, NO panel, NO ` +
+      `cartouche, NO boxes or delimited boundaries of any kind. Layer 2-3 ` +
+      `foreground elements (a branch, an object or motif) that cross OVER the ` +
+      `letters, clearly in FRONT of the title, for depth. Let the background and ` +
+      `overlapping elements bleed outward into the side margins, which will be ` +
+      `cropped away. ${subject} Do NOT depict any people, human figures, ` +
+      `silhouettes, crowds, hands or faces. Flat graphic design only — no ` +
+      `perspective, no mockup, no 3D render. Use a cohesive limited palette ` +
+      `derived from these colors: ${palette}.`
     );
   }
   return (
