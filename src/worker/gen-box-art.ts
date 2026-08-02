@@ -21,54 +21,13 @@ import { loadCatalog } from "../store.ts";
 import { buildAssetPlatform } from "../asset/platform.ts";
 import { runPipeline } from "../asset/pipeline.ts";
 import { buildGenSources } from "../asset/gen/box-art.ts";
-import { palette as extractPalette } from "../asset/tint.ts";
 import { boxArtKey, FACES } from "../asset/box-contract.ts";
 import { keyPath } from "../asset/key.ts";
-import type { AssetService } from "../asset/service.ts";
-import type { Entity } from "../asset/types.ts";
+import { select, toEntity } from "./box-art-lib.ts";
 
 const env = (k: string): string => process.env[k] ?? "";
 const DATA_DIR = env("DATA_DIR") || "./data";
 const BUCKET = env("ASSETS_GCS_BUCKET");
-
-const coverSource = (g: Game): "bgg" | "ludopedia" | null =>
-  g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
-
-/** BGG's own game blurb (from the stored provider XML), cleaned and trimmed to a
- * short 1-2 sentence line — the default description when a note doesn't set one. */
-function bggBlurb(g: Game): string | undefined {
-  const xml = g.providerData?.bgg?.data;
-  const m = typeof xml === "string" ? xml.match(/<description>([\s\S]*?)<\/description>/) : null;
-  if (!m) return undefined;
-  const text = m[1]
-    .replace(/&#10;|&#13;/g, " ")
-    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&rsquo;|&apos;/g, "'")
-    .replace(/&mdash;/g, "\u2014").replace(/&ndash;/g, "\u2013")
-    .replace(/&[a-z0-9#]+;/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  if (!text) return undefined;
-  const sentences = text.match(/[^.!?]+[.!?]+/g)?.slice(0, 2).join(" ").trim();
-  const short = sentences || text;
-  return short.length > 240 ? short.slice(0, 240).replace(/\s+\S*$/, "") + "\u2026" : short;
-}
-
-/** Sample the game's real cover for a palette to theme its generated art. */
-async function coverPalette(g: Game, service: AssetService): Promise<string[]> {
-  const source = coverSource(g);
-  if (!source) return [];
-  const cover = await service.render({ entity: g.id, kind: "cover", source, variant: "original", ext: "jpg" }, new URLSearchParams());
-  return cover ? await extractPalette(cover) : [];
-}
-
-function select(games: Game[], argv: string[]): Game[] {
-  if (argv.includes("--all")) return games;
-  const nameIdx = argv.indexOf("--name");
-  if (nameIdx !== -1) {
-    const needles = argv.slice(nameIdx + 1).flatMap((s) => s.split(",")).map((s) => s.trim().toLowerCase()).filter(Boolean);
-    return games.filter((g) => needles.some((n) => g.name.toLowerCase().startsWith(n)));
-  }
-  const ids = new Set(argv);
-  return games.filter((g) => ids.has(g.id));
-}
 
 const bucket = BUCKET ? new Storage().bucket(BUCKET) : null;
 /** A URL to view a stored face — a 7-day signed URL on GCS, else the disk path. */
@@ -95,10 +54,7 @@ if (!chosen.length) {
 const { service } = buildAssetPlatform({ dataDir: DATA_DIR });
 console.log(`generating box art for ${chosen.length} game(s) → ${BUCKET ? `GCS bucket ${BUCKET}` : `disk ${DATA_DIR}/assets`}`);
 
-const entities: Entity[] = [];
-for (const g of chosen) {
-  entities.push({ id: g.id, name: g.name, categories: g.facts?.categories, mechanics: g.facts?.mechanics, description: g.description ?? bggBlurb(g), artNote: g.boxArtDescription, dims: g.dimensions, palette: await coverPalette(g, service) });
-}
+const entities = await Promise.all(chosen.map((g) => toEntity(g, service)));
 
 const sources = buildGenSources({ apiKey });
 const tally: Record<string, number> = {};
