@@ -120,7 +120,7 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
   return (
     <a
       class={`box${size ? " sized" : ""}${grp.expansions.length ? " has-expansions" : ""}`}
-      href={`#g-${g.id}`}
+      href={`#g-${g.slug}`}
       style={`--tint:${tint}${sizeStyle}`}
       data-id={g.id}
       data-search={search}
@@ -175,7 +175,7 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
 const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
   const g = grp.base;
   return (
-    <a class="spine" href={`#g-${g.id}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
+    <a class="spine" href={`#g-${g.slug}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
       <span class="spine-name">{g.name}</span>
       <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" onerror="this.remove()" />
     </a>
@@ -190,7 +190,7 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ gr
   const bg = coverSrc(g);
   const showSale = canSeeSale(perm) && (!!g.salePrice || !!g.price);
   return (
-    <div class="detail" id={`g-${g.id}`} style={`--tint:${tint}`}>
+    <div class="detail" id={`g-${g.slug}`} style={`--tint:${tint}`}>
       <a class="detail-bg" href="#" aria-label="Fechar" style={bg ? `background-image:url("${bg}")` : ""}></a>
       <div class="hub">
         <div class="hub-inner">
