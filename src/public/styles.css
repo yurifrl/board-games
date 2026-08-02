@@ -138,7 +138,7 @@ body.view-spine .view-toggle { background: rgba(150,110,60,.9); }
 body.view-spine .shelf { display: none; }
 body.view-spine .spines {
   --pt: calc(84px + env(safe-area-inset-top));
-  --spinew: 104px; --rowh: 340px; --rowgap: 66px; --board: 26px;
+  --spinew: 156px; --rowh: 340px; --rowgap: 66px; --board: 26px;
   display: grid;
   grid-template-columns: repeat(auto-fill, var(--spinew));
   grid-auto-rows: var(--rowh);
