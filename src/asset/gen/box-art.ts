@@ -57,12 +57,15 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
   const subject = parts.length ? `What it's about: ${parts.join(" ")}` : `Evoke its theme: ${input.theme}.`;
   if (face === "spine") {
     return (
-      `ONLY a board game box SPINE — a single tall narrow rectangular strip, the ` +
-      `thin shelf-facing edge — for "${name}". The strip fills the full height of ` +
-      `the image and stands ALONE on a solid flat pure-white (#ffffff) background ` +
-      `with nothing else: no scene, no feature icons, no list. On the strip: the ` +
-      `vertical title "${name}" reading bottom-to-top and one small emblem at the ` +
-      `top. ${subject} ${style}`
+      `A flat 2D vertical STRIP graphic for the board game "${name}", drawn perfectly ` +
+      `straight-on and standing ALONE on a solid pure-white (#ffffff) background so it ` +
+      `can be cropped out. The strip is a flat tall rectangle, NOT a 3D box, NOT a ` +
+      `product render, NO perspective, NO angle, NO box sides/edges/thickness, NO ` +
+      `shadow. Inside the strip: an illustrated BACKGROUND scene evoking the game (do ` +
+      `NOT copy the front cover), and over it in the FOREGROUND the game name ` +
+      `"${name}" in large bold vertical lettering reading bottom-to-top, spelled ` +
+      `exactly once, fully legible and NEVER obstructed, high contrast, running the ` +
+      `length of the strip. NO logo, NO emblem, NO icons. ${subject} ${style}`
     );
   }
   return (
