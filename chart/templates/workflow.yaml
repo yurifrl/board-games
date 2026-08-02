@@ -1,0 +1,228 @@
+{{- if .Values.worker.workflow.enabled }}
+{{- $fullname := include "board-games.fullname" . }}
+# ─────────────────────────────────────────────────────────────────────────────
+# On-demand catalog sync as an Argo Workflow, triggered after the obsidian
+# vault-sync completes AND that sync touched the Board Games inventory folder.
+#
+# Chain: obsidian-vault-sync (obsidian ns) labels its Workflow
+#   board-games-inventory-changed=true  ->  the resource EventSource below
+#   watches obsidian-ns Workflows for that label + Succeeded  ->  the Sensor
+#   submits the board-games-sync WorkflowTemplate here.
+#
+# The sync pod mounts the same RWO `data` PVC the app holds, so it co-locates
+# (podAffinity) with the app pod, matching the deployment's node pin.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: board-games-sync
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  entrypoint: sync
+  serviceAccountName: {{ $fullname }}-workflow
+  synchronization:
+    mutex:
+      name: board-games-sync
+  activeDeadlineSeconds: 600
+  ttlStrategy:
+    secondsAfterCompletion: 3600
+  templates:
+    - name: sync
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: {{ $fullname }}
+              topologyKey: kubernetes.io/hostname
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-data
+        {{- if .Values.assetsGcsBucket }}
+        - name: gcs-creds
+          secret:
+            secretName: {{ .Values.gcsSecretName }}
+            items:
+              - key: private_key
+                path: key.json
+        {{- end }}
+      container:
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["bun", "run", "src/worker/index.ts"]
+        env:
+          - name: SYNC_ONCE
+            value: "1"
+          {{- include "board-games.workerEnv" . | nindent 10 }}
+        volumeMounts:
+          - name: data
+            mountPath: /data
+          {{- if .Values.assetsGcsBucket }}
+          - name: gcs-creds
+            mountPath: /var/secrets/gcp
+            readOnly: true
+          {{- end }}
+        resources: {{ toYaml .Values.resources | nindent 10 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: EventBus
+metadata:
+  name: default
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  jetstream:
+    version: latest
+    replicas: 3
+---
+# Watches the obsidian namespace for a vault-sync Workflow that Succeeded and
+# was labelled board-games-inventory-changed=true.
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: {{ $fullname }}-obsidian-watch
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  template:
+    serviceAccountName: {{ $fullname }}-eventsource
+  resource:
+    obsidian-sync:
+      namespace: {{ .Values.worker.workflow.obsidianNamespace }}
+      group: argoproj.io
+      version: v1alpha1
+      resource: workflows
+      eventTypes:
+        - UPDATE
+      filter:
+        labels:
+          - key: board-games-inventory-changed
+            operation: "=="
+            value: "true"
+        fields:
+          - key: status.phase
+            operation: "=="
+            value: Succeeded
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: {{ $fullname }}-sync
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  template:
+    serviceAccountName: {{ $fullname }}-sensor
+  dependencies:
+    - name: obsidian-synced
+      eventSourceName: {{ $fullname }}-obsidian-watch
+      eventName: obsidian-sync
+  triggers:
+    - template:
+        name: submit-board-games-sync
+        argoWorkflow:
+          operation: submit
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: board-games-sync-
+              spec:
+                workflowTemplateRef:
+                  name: board-games-sync
+---
+# ── RBAC ─────────────────────────────────────────────────────────────────────
+# EventSource: cross-namespace watch of obsidian Workflows (cluster-scoped read).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}-eventsource
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-eventsource-workflows-read
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-eventsource-workflows-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-eventsource-workflows-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-eventsource
+    namespace: {{ .Release.Namespace }}
+---
+# Sensor: submits the sync Workflow in this namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}-sensor
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-sensor
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["create", "get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtemplates"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-sensor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-sensor
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-sensor
+    namespace: {{ .Release.Namespace }}
+---
+# Workflow pods: write workflowtaskresults.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}-workflow
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-workflow
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-workflow
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-workflow
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-workflow
+    namespace: {{ .Release.Namespace }}
+{{- end }}

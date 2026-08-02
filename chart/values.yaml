@@ -24,6 +24,11 @@ worker:
   # Vault folder + note the worker reads.
   inventoryFolder: Yuri/Resources/Board Games/Inventory
   usersNote: Yuri/Resources/Board Games/Users.md
+  # When enabled, the sidecar is dropped and the sync runs as an Argo Workflow
+  # triggered after obsidian vault-sync touches the inventory folder.
+  workflow:
+    enabled: false
+    obsidianNamespace: obsidian
 
 # ── persistence: single volume for all state ─────────────────────────────────
 cache:

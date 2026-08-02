@@ -1,4 +1,3 @@
-{{- $w := .Values.worker -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,51 +17,16 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
+        {{- if not .Values.worker.workflow.enabled }}
         # Worker: polls the Obsidian Local REST API, writes catalog + users +
         # covers into the shared volume. The app never talks to Obsidian.
+        # (Disabled when worker.workflow.enabled: the sync runs as an Argo
+        # Workflow triggered after obsidian vault-sync instead.)
         - name: worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           command: ["bun", "run", "src/worker/index.ts"]
           env:
-            - name: DATA_DIR
-              value: /data
-            - name: SYNC_INTERVAL_MS
-              value: {{ (mul $w.intervalSeconds 1000) | quote }}
-            - name: OBSIDIAN_API_URL
-              value: {{ .Values.obsidianApiUrl | default "https://obsidian.default.svc:27124" | quote }}
-            - name: OBSIDIAN_INVENTORY_FOLDER
-              value: {{ $w.inventoryFolder | quote }}
-            - name: OBSIDIAN_USERS_NOTE
-              value: {{ $w.usersNote | quote }}
-            - name: OBSIDIAN_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secretName }}
-                  key: OBSIDIAN_API_KEY
-            - name: LUDOPEDIA_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secretName }}
-                  key: LUDOPEDIA_ACCESS_TOKEN
-                  optional: true
-            - name: LUDOPEDIA_COOKIE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secretName }}
-                  key: LUDOPEDIA_COOKIE
-                  optional: true
-            - name: BGG_BEARER_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secretName }}
-                  key: BGG_BEARER_TOKEN
-                  optional: true
-            {{- if .Values.assetsGcsBucket }}
-            - name: ASSETS_GCS_BUCKET
-              value: {{ .Values.assetsGcsBucket | quote }}
-            - name: GOOGLE_APPLICATION_CREDENTIALS
-              value: /var/secrets/gcp/key.json
-            {{- end }}
+            {{- include "board-games.workerEnv" . | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /data
@@ -72,6 +36,7 @@ spec:
               readOnly: true
             {{- end }}
           resources: {{ toYaml .Values.resources | nindent 12 }}
+        {{- end }}
         # The public catalog app. Reads the volume; also writes the /assets
         # variant cache, so the mount is writable.
         - name: app
