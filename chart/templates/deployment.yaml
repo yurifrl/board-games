@@ -51,6 +51,12 @@ spec:
                   name: {{ .Values.secretName }}
                   key: LUDOPEDIA_COOKIE
                   optional: true
+            - name: BGG_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: BGG_BEARER_TOKEN
+                  optional: true
             {{- if .Values.assetsGcsBucket }}
             - name: ASSETS_GCS_BUCKET
               value: {{ .Values.assetsGcsBucket | quote }}
