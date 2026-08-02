@@ -63,14 +63,17 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
     return (
       `Generate a flat front view of a single book spine (not 3D), the title ` +
       `centered.\n\nDisplay EXACTLY this text (no extra, missing, doubled or ` +
-      `reordered letters). Write ONE letter per line, each letter UPRIGHT and ` +
-      `stacked directly beneath the previous one in a SINGLE vertical column down ` +
-      `the centre. Do NOT rotate the letters. Do NOT place two letters side by ` +
-      `side. Do NOT write any word horizontally or on its side. Blank lines ` +
-      `separate words:\n\n${stacked}\n\nThe title has ${letters.length} letters ` +
-      `— size them SMALL enough that the whole vertical stack fits from top to ` +
-      `bottom with clear margins and nothing runs off any edge. Keep the stack ` +
-      `bold, high-contrast and centred, away from the left and right edges. ` +
+      `reordered letters), every letter UPRIGHT — never rotated, never on its ` +
+      `side, never a horizontal word. Stack the letters vertically, one per line, ` +
+      `top to bottom:\n\n${stacked}\n\nCRITICAL: the ENTIRE title (all ` +
+      `${letters.length} letters) MUST fit inside the spine with clear top and ` +
+      `bottom margins — no letter may be cut off or run past any edge. Make the ` +
+      `letters as SMALL as needed to guarantee this; it is far better to make ` +
+      `them small than to crop a single letter. If it is a multi-word title and ` +
+      `one vertical line would be too tall, you MAY place the words as separate ` +
+      `vertical lines standing side by side, but keep every single word as one ` +
+      `unbroken vertical run of upright letters — never split a word across ` +
+      `lines. Keep the text bold, high-contrast and centred. ` +
       `Behind it, a richly textured illustrated background scene evoking the game ` +
       `fills the whole image edge to edge — NO frame, NO border, NO panel, NO ` +
       `cartouche, NO boxes or delimited boundaries of any kind. Layer 2-3 ` +
