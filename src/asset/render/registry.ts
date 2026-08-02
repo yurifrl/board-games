@@ -6,5 +6,6 @@ import { ImageRenderer } from "./image.ts";
  * byte-for-byte by the service's identity fallback. Add a kind's transform here.
  */
 export function buildRenderers(): Map<string, AssetRenderer> {
-  return new Map<string, AssetRenderer>([["cover", new ImageRenderer()]]);
+  const image = new ImageRenderer();
+  return new Map<string, AssetRenderer>([["cover", image], ["spine", image]]);
 }

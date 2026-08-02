@@ -20,7 +20,7 @@ export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400
 // drops itself (onerror), revealing the tinted default spine underneath.
 export function signedSpine(entity: string): string {
   const key = boxArtKey(entity, "spine");
-  return `/asset/${entity}/spine/gen/${key.variant}.${key.ext}?${sign(key)}`;
+  return `/asset/${entity}/spine/gen/${key.variant}.${key.ext}?${sign(key, { w: 120 })}`;
 }
 
 const coverSrc = (g: Game, w = 400, h?: number): string => {
