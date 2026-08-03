@@ -12,6 +12,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { mkdir, copyFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadCatalog } from "../store.ts";
 import { AssetService } from "../asset/service.ts";
@@ -28,8 +29,8 @@ const DATA_DIR = env("DATA_DIR") || "./data";
 const SPINE_URL = env("SPINE_URL") || "http://localhost:3000/spine";
 const CHROME = env("CHROME_BIN") || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const DEFAULT_NAMES = ["spook", "hot", "diatoms", "magical", "barbecubes", "o gato e a torre"];
-// Good already — do NOT regenerate (their existing art stays). Add names here as they pass.
-const LOCKED = ["tenby", "spook", "diatoms", "hot", "o gato"];
+// Good already — do NOT regenerate. Curated in spine-locked.json (repo root), editable without code changes.
+const LOCKED: string[] = JSON.parse(readFileSync("spine-locked.json", "utf8"));
 
 const apiKey = env("OPENAI_API_KEY");
 if (!apiKey) {
