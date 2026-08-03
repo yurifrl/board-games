@@ -82,7 +82,9 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
       `${lines.length} line${lines.length > 1 ? "s" : ""}, as parallel lines of ` +
       `rotated text running up the spine right next to each other:\n\n` +
       `${linesText}\n\nSpell every word exactly and correctly (the full title is ` +
-      `"${upper}"). Make the text bold, high-contrast and centred, sized so the ` +
+      `"${upper}"). Every line must show all of its words FULLY spelled from end ` +
+      `to end, with no letter running off the top, bottom or sides. Make the text ` +
+      `bold, high-contrast and centred, sized so the ` +
       `whole title fits along the spine with clear margins and nothing is cut off ` +
       `at any edge. Behind it, a richly textured illustrated background scene ` +
       `evoking the game fills the whole image edge to edge — NO frame, NO border, ` +
