@@ -70,9 +70,10 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
       `before finishing. CRITICAL: the ` +
       `ENTIRE title (all ${letters.length} letters) MUST fit inside the spine ` +
       `with clear top and bottom margins — no letter may be cut off or run past ` +
-      `any edge. Make the ` +
-      `letters as SMALL as needed to guarantee this; it is far better to make ` +
-      `them small than to crop a single letter. If it is a multi-word title and ` +
+      `any edge. Use a bold typeface whose letters are SHORT in height (each ` +
+      `glyph about as wide as it is tall, not tall and narrow) and make them as ` +
+      `small as needed so all ${letters.length} letters stack and fit; it is far ` +
+      `better to make them small than to crop a single letter. If it is a multi-word title and ` +
       `one vertical line would be too tall, you MAY place the words as separate ` +
       `vertical lines standing side by side, but keep every single word as one ` +
       `unbroken vertical run of upright letters — never split a word across ` +
