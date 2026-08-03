@@ -72,7 +72,10 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
       }
       lines = [words.slice(0, best).join(" "), words.slice(best).join(" ")];
     }
-    const linesText = lines.map((l, i) => `Line ${i + 1}: "${l}"`).join("\n");
+    const linesText = lines.map((l, i) => {
+      const sp = l.split(/\s+/).map((w) => w.split("").join("-")).join(" ");
+      return `Line ${i + 1}: "${l}"  (letters: ${sp})`;
+    }).join("\n");
     return (
       `Generate a flat front view of a single book spine (not 3D). Render the ` +
       `title like a REAL BOOK SPINE: the lettering runs along the tall vertical ` +
