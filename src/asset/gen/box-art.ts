@@ -92,8 +92,11 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
       `bold, high-contrast and centred, and PREFER shrinking it over cutting ` +
       `anything off: size the letters small enough that the WIDEST word fits ` +
       `within the spine width with a clear margin on both sides, and the whole ` +
-      `title fits top to bottom. Stacking the words on separate lines that read ` +
-      `top to bottom is ideal, as long as every word fits and stays legible. ` +
+      `title fits top to bottom. Each word runs VERTICALLY up the spine (rotated ` +
+      `90 degrees, reading bottom to top) so its LENGTH uses the tall axis — ` +
+      `never write a word so wide across the spine that its first or last letter ` +
+      `is cut off at the side. For multiple words, set them as parallel vertical ` +
+      `lines side by side. ` +
       `Behind it, a richly textured illustrated background scene ` +
       `evoking the game fills the whole image edge to edge — NO frame, NO border, ` +
       `NO panel, NO cartouche, NO boxes or delimited boundaries of any kind. ` +
