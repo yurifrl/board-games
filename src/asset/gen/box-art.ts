@@ -58,36 +58,40 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
   if (face === "spine") {
     const palette = (input.palette?.length ? input.palette : DEFAULT_PALETTE).join(", ");
     const upper = name.toUpperCase();
-    const letters = upper.replace(/\s+/g, "");
-    const spelled = upper.split(/\s+/).map((w) => w.split("").join("-")).join("  /  ");
+    const words = upper.split(/\s+/).filter(Boolean);
+    let lines: string[];
+    if (words.length <= 1) {
+      lines = [upper];
+    } else {
+      const total = upper.length;
+      let best = 1, bestDiff = Infinity;
+      for (let i = 1; i < words.length; i++) {
+        const left = words.slice(0, i).join(" ").length;
+        const diff = Math.abs(left - (total - left));
+        if (diff < bestDiff) { bestDiff = diff; best = i; }
+      }
+      lines = [words.slice(0, best).join(" "), words.slice(best).join(" ")];
+    }
+    const linesText = lines.map((l, i) => `Line ${i + 1}: "${l}"`).join("\n");
     return (
-      `Generate a flat front view of a single book spine (not 3D), the title ` +
-      `centered.\n\nWrite the exact title "${upper}" VERTICALLY as a single ` +
-      `column: each letter UPRIGHT (never rotated, never on its side, never a ` +
-      `horizontal word), stacked directly below the previous one from top to ` +
-      `bottom. It is spelled ${spelled} — exactly ${letters.length} letters in ` +
-      `this order; none skipped, none added, none doubled. Proofread the letters ` +
-      `before finishing. CRITICAL: the ` +
-      `ENTIRE title (all ${letters.length} letters) MUST fit inside the spine ` +
-      `with clear top and bottom margins — no letter may be cut off or run past ` +
-      `any edge. Use a bold typeface whose letters are SHORT in height (each ` +
-      `glyph about as wide as it is tall, not tall and narrow) and make them as ` +
-      `small as needed so all ${letters.length} letters stack and fit; it is far ` +
-      `better to make them small than to crop a single letter. If it is a multi-word title and ` +
-      `one vertical line would be too tall, you MAY place the words as separate ` +
-      `vertical lines standing side by side, but keep every single word as one ` +
-      `unbroken vertical run of upright letters — never split a word across ` +
-      `lines. Keep the text bold, high-contrast and centred. ` +
-      `Behind it, a richly textured illustrated background scene evoking the game ` +
-      `fills the whole image edge to edge — NO frame, NO border, NO panel, NO ` +
-      `cartouche, NO boxes or delimited boundaries of any kind. Layer 2-3 ` +
-      `foreground elements (a branch, an object or motif) that cross OVER the ` +
-      `letters, clearly in FRONT of the title, for depth. Let the background and ` +
-      `overlapping elements bleed outward into the side margins, which will be ` +
-      `cropped away. ${subject} Do NOT depict any people, human figures, ` +
-      `silhouettes, crowds, hands or faces. Flat graphic design only — no ` +
-      `perspective, no mockup, no 3D render. Use a cohesive limited palette ` +
-      `derived from these colors: ${palette}.`
+      `Generate a flat front view of a single book spine (not 3D). Render the ` +
+      `title like a REAL BOOK SPINE: the lettering runs along the tall vertical ` +
+      `axis, ROTATED 90 degrees so the words read from bottom to top. Write each ` +
+      `word NORMALLY as a horizontal word (correctly spelled) and rotate it as a ` +
+      `whole — do NOT stack separate upright letters. Set the title on ` +
+      `${lines.length} line${lines.length > 1 ? "s" : ""}, as parallel lines of ` +
+      `rotated text running up the spine right next to each other:\n\n` +
+      `${linesText}\n\nSpell every word exactly and correctly (the full title is ` +
+      `"${upper}"). Make the text bold, high-contrast and centred, sized so the ` +
+      `whole title fits along the spine with clear margins and nothing is cut off ` +
+      `at any edge. Behind it, a richly textured illustrated background scene ` +
+      `evoking the game fills the whole image edge to edge — NO frame, NO border, ` +
+      `NO panel, NO cartouche, NO boxes or delimited boundaries of any kind. ` +
+      `Layer 2-3 foreground elements (a branch, an object or motif) that cross ` +
+      `OVER the letters, clearly in FRONT of the title, for depth. ${subject} Do ` +
+      `NOT depict any people, human figures, silhouettes, crowds, hands or faces. ` +
+      `Flat graphic design only — no perspective, no mockup, no 3D render. Use a ` +
+      `cohesive limited palette derived from these colors: ${palette}.`
     );
   }
   return (
