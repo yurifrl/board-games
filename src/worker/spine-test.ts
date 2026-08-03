@@ -29,7 +29,7 @@ const SPINE_URL = env("SPINE_URL") || "http://localhost:3000/spine";
 const CHROME = env("CHROME_BIN") || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const DEFAULT_NAMES = ["spook", "hot", "diatoms", "magical", "barbecubes", "o gato e a torre"];
 // Good already — do NOT regenerate (their existing art stays). Add names here as they pass.
-const LOCKED = ["tenby", "spook", "diatoms"];
+const LOCKED = ["tenby", "spook", "diatoms", "hot", "o gato"];
 
 const apiKey = env("OPENAI_API_KEY");
 if (!apiKey) {
