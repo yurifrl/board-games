@@ -28,6 +28,8 @@ const DATA_DIR = env("DATA_DIR") || "./data";
 const SPINE_URL = env("SPINE_URL") || "http://localhost:3000/spine";
 const CHROME = env("CHROME_BIN") || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const DEFAULT_NAMES = ["spook", "hot", "diatoms", "magical", "barbecubes", "o gato e a torre"];
+// Good already — do NOT regenerate (their existing art stays). Add names here as they pass.
+const LOCKED = ["tenby", "spook", "diatoms"];
 
 const apiKey = env("OPENAI_API_KEY");
 if (!apiKey) {
@@ -42,7 +44,8 @@ const service = new AssetService(origin, cache, buildRenderers(), false);
 
 const games = await loadCatalog(DATA_DIR);
 const argv = process.argv.slice(2);
-const chosen = select(games, ["--name", ...(argv.length ? argv : DEFAULT_NAMES)]);
+const chosen = select(games, ["--name", ...(argv.length ? argv : DEFAULT_NAMES)])
+  .filter((g) => !LOCKED.some((l) => g.name.toLowerCase().startsWith(l)));
 if (!chosen.length) {
   console.error("no games matched");
   process.exit(1);
