@@ -86,7 +86,9 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
       `rotated text running up the spine right next to each other:\n\n` +
       `${linesText}\n\nSpell every word exactly and correctly (the full title is ` +
       `"${upper}"). Every line must show all of its words FULLY spelled from end ` +
-      `to end, with no letter running off the top, bottom or sides. Make the text ` +
+      `to end — include the FIRST and LAST letter of every word, which are the ` +
+      `most commonly dropped — with no letter running off the top, bottom or ` +
+      `sides. Make the text ` +
       `bold, high-contrast and centred, and PREFER shrinking it over cutting ` +
       `anything off: size the letters small enough that the WIDEST word fits ` +
       `within the spine width with a clear margin on both sides, and the whole ` +
