@@ -9,6 +9,7 @@ export interface GcsBucketLike {
     exists(): Promise<[boolean]>;
     download(): Promise<[Buffer]>;
     save(data: Buffer | Uint8Array, opts?: { contentType?: string; metadata?: { metadata?: Record<string, string> } }): Promise<void>;
+    delete(opts?: { ignoreNotFound?: boolean }): Promise<unknown>;
     getMetadata(): Promise<[{ contentType?: string; size?: string | number; metadata?: Record<string, string | number | boolean | null> }, ...unknown[]]>;
   };
   getFiles(opts: { prefix: string }): Promise<[Array<{ name: string }>, ...unknown[]]>;
@@ -69,5 +70,9 @@ export class GcsBlobStore implements BlobStore {
   async list(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]> {
     const [files] = await this.bucket.getFiles({ prefix: keyPrefix(prefix) });
     return files.map((f) => parseKey(f.name)).filter((k): k is AssetKey => k !== null);
+  }
+
+  async del(key: AssetKey): Promise<void> {
+    await this.bucket.file(keyPath(key)).delete({ ignoreNotFound: true });
   }
 }

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
@@ -51,6 +51,12 @@ export class DiskBlobStore implements BlobStore {
     const side: Sidecar = { contentType: blob.contentType, fingerprint: blob.fingerprint, sha256 };
     await writeFile(`${f}.meta`, JSON.stringify(side));
     return { key, contentType: blob.contentType, bytes: blob.bytes.byteLength, fingerprint: blob.fingerprint };
+  }
+
+  async del(key: AssetKey): Promise<void> {
+    const f = this.file(key);
+    await rm(f, { force: true });
+    await rm(`${f}.meta`, { force: true });
   }
 
   async list(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]> {

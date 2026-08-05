@@ -18,6 +18,14 @@ whatsappNumber: ""            # optional; or set via secret WHATSAPP_NUMBER
 service:
   port: 8080
 
+# ── bg-admin: isolated cover-studio control plane (internal Service, no Ingress) ─
+# Runs as a sidecar in the app pod (same image, `bun run src/admin/index.ts`) so
+# it shares the volume on the same filesystem — a promoted pick shows on the
+# public app immediately.
+admin:
+  enabled: true
+  port: 8081
+
 # ── worker sidecar: syncs from the Obsidian Local REST API ───────────────────
 worker:
   intervalSeconds: 300

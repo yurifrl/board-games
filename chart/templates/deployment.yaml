@@ -103,6 +103,44 @@ spec:
               readOnly: true
             {{- end }}
           resources: {{ toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.admin.enabled }}
+        # bg-admin: the isolated cover-studio control plane. Same image, different
+        # entrypoint. Shares the app's volume IN-POD (guaranteed same filesystem,
+        # so a promoted pick is visible to the app immediately — and RWO-safe on
+        # longhorn). Reached only via the internal `bg-admin` Service; NO Ingress.
+        - name: admin
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["bun", "run", "src/admin/index.ts"]
+          ports:
+            - name: admin
+              containerPort: {{ .Values.admin.port }}
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: ADMIN_PORT
+              value: {{ .Values.admin.port | quote }}
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: AUTH_SECRET
+            {{- if .Values.assetsGcsBucket }}
+            - name: ASSETS_GCS_BUCKET
+              value: {{ .Values.assetsGcsBucket | quote }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/gcp/key.json
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- if .Values.assetsGcsBucket }}
+            - name: gcs-creds
+              mountPath: /var/secrets/gcp
+              readOnly: true
+            {{- end }}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: data
           persistentVolumeClaim:

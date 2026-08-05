@@ -25,6 +25,10 @@ export class InMemoryBlobStore implements BlobStore {
     return { key, contentType: blob.contentType, bytes: blob.bytes.byteLength, fingerprint: blob.fingerprint };
   }
 
+  async del(key: AssetKey): Promise<void> {
+    this.blobs.delete(keyPath(key));
+  }
+
   async list(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]> {
     const p = keyPrefix(prefix);
     const out: AssetKey[] = [];

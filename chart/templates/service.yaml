@@ -7,3 +7,18 @@ spec:
   ports:
     - port: {{ .Values.service.port }}
       targetPort: 8080
+{{- if .Values.admin.enabled }}
+---
+# Internal-only Service for the cover-studio admin. No Ingress references it, so
+# it is reachable only inside the cluster (bg-admin.<namespace>.svc) — closed on
+# access, never exposed to the internet.
+apiVersion: v1
+kind: Service
+metadata:
+  name: bg-admin
+spec:
+  selector: { app: {{ include "board-games.fullname" . }} }
+  ports:
+    - port: {{ .Values.admin.port }}
+      targetPort: admin
+{{- end }}

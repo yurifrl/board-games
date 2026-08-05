@@ -133,6 +133,25 @@ body.view-spine .view-toggle { background: rgba(150,110,60,.9); }
 }
 @media (prefers-reduced-motion: reduce) { .view-toggle.hint { animation: none; } }
 
+/* Hint-only label: reveals "trocar visualização" left-to-right for a few seconds while the toggle is still blinking. */
+.view-toggle-label {
+  position: fixed; left: 68px; bottom: 16px; z-index: 60;
+  height: 44px; display: flex; align-items: center;
+  padding: 0 16px; border-radius: 22px;
+  background: rgba(150,110,60,.92); color: #fff;
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4); backdrop-filter: blur(4px);
+  pointer-events: none; opacity: 0; clip-path: inset(0 100% 0 0);
+}
+.view-toggle.hint + .view-toggle-label { animation: vt-reveal 4s ease forwards; }
+@keyframes vt-reveal {
+  0%   { opacity: 0; clip-path: inset(0 100% 0 0); }
+  12%  { opacity: 1; clip-path: inset(0 0 0 0); }
+  75%  { opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { opacity: 0; clip-path: inset(0 100% 0 0); }
+}
+@media (prefers-reduced-motion: reduce) { .view-toggle.hint + .view-toggle-label { animation: none; } }
+
 /* Spine (bookshelf) view: narrow standing spines on the same wooden ledge. */
 .spines { display: none; }
 body.view-spine .shelf { display: none; }

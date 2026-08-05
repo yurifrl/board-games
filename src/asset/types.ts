@@ -30,6 +30,8 @@ export interface BlobStore {
   head(key: AssetKey): Promise<AssetRecord | null>;
   get(key: AssetKey): Promise<AssetBlob | null>;
   put(key: AssetKey, blob: AssetBlob): Promise<AssetRecord>;
+  /** Remove a single object. No-op when it doesn't exist. */
+  del(key: AssetKey): Promise<void>;
   /** Keys under a prefix (e.g. all of a game's rulebooks). */
   list(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]>;
 }

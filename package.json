@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
+    "admin": "bun run --watch src/admin/index.ts",
     "start": "bun run src/index.ts",
     "worker": "bun run src/worker/index.ts",
     "worker-sync-once": "SYNC_ONCE=1 bun run src/worker/index.ts",

@@ -7,5 +7,10 @@ import { ImageRenderer } from "./image.ts";
  */
 export function buildRenderers(): Map<string, AssetRenderer> {
   const image = new ImageRenderer();
-  return new Map<string, AssetRenderer>([["cover", image], ["spine", image]]);
+  return new Map<string, AssetRenderer>([
+    ["cover", image],
+    ["spine", image],
+    ["front", image],
+    ["display", image],
+  ]);
 }

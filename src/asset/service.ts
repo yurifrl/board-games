@@ -35,10 +35,54 @@ export class AssetService {
     return rec;
   }
 
+  /** Write to the LOCAL cache only. Generated/uploaded candidates live here
+   * until explicitly {@link save}d to the durable origin (GCS). */
+  async putLocal(key: AssetKey, blob: AssetBlob): Promise<AssetRecord> {
+    return this.cache.put(key, blob);
+  }
+
+  /** Persist a cached original to the durable origin (GCS). No-op-ish return
+   * false when the bytes aren't on disk. */
+  async save(key: AssetKey): Promise<boolean> {
+    const blob = await this.cache.get(key);
+    if (!blob) return false;
+    await this.origin.put(key, blob);
+    return true;
+  }
+
+  /** Delete an original from both tiers (durable + local). */
+  async remove(key: AssetKey): Promise<void> {
+    await this.origin.del(key);
+    await this.cache.del(key);
+  }
+
+  /** Delete from the durable origin (GCS) only — keeps the local copy. */
+  async removeOrigin(key: AssetKey): Promise<void> {
+    await this.origin.del(key);
+  }
+
+  /** Delete from the local cache only — keeps the durable (GCS) copy. */
+  async removeCache(key: AssetKey): Promise<void> {
+    await this.cache.del(key);
+  }
+
+  /** List keys under a prefix from each tier (for tier-aware history). */
+  listOrigin(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]> {
+    return this.origin.list(prefix);
+  }
+  listCache(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]> {
+    return this.cache.list(prefix);
+  }
+
   /** True when the origin has no copy, or a copy with a different fingerprint. */
   async needsUpdate(key: AssetKey, fingerprint: string): Promise<boolean> {
     const rec = await this.origin.head(key);
     return rec == null || rec.fingerprint !== fingerprint;
+  }
+
+  /** Stored record (incl. fingerprint) for an original, cache first then origin. */
+  async head(key: AssetKey): Promise<AssetRecord | null> {
+    return (await this.cache.head(key)) ?? (await this.origin.head(key));
   }
 
   /** Keys under a prefix (e.g. a game's rulebooks), read from the durable origin. */

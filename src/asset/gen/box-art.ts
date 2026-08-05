@@ -29,10 +29,10 @@ export const BASE_STYLE =
 /** Fallback palette when a game has no cover to sample. */
 export const DEFAULT_PALETTE = ["#f2e9d0", "#3fa39a", "#e0a83e", "#e5654e", "#1f2a44"];
 
-/** BASE_STYLE plus the palette clause — every face of a game shares its palette. */
-export function styleWithPalette(palette?: string[]): string {
+/** BASE_STYLE (or a caller-supplied base) plus the palette clause. */
+export function styleWithPalette(palette?: string[], base: string = BASE_STYLE): string {
   const p = (palette?.length ? palette : DEFAULT_PALETTE).join(", ");
-  return `${BASE_STYLE} Use a cohesive limited palette derived from these colors: ${p}.`;
+  return `${base} Use a cohesive limited palette derived from these colors: ${p}.`;
 }
 
 /** Back-compat default style (default palette). */
@@ -49,10 +49,12 @@ export interface FaceInput {
   description?: string;
   artNote?: string;
   palette?: string[];
+  /** House-style base to use instead of BASE_STYLE (e.g. from Obsidian). */
+  style?: string;
 }
 
 export function facePrompt(face: Face, name: string, input: FaceInput): string {
-  const style = styleWithPalette(input.palette);
+  const style = styleWithPalette(input.palette, input.style);
   const parts = [input.description, input.artNote].map((s) => s?.trim()).filter(Boolean);
   const subject = parts.length ? `What it's about: ${parts.join(" ")}` : `Evoke its theme: ${input.theme}.`;
   if (face === "spine") {
@@ -151,6 +153,43 @@ export interface GenConfig {
   apiKey?: string;
   /** Test seam — defaults to {@link openaiImageGen}. */
   gen?: ImageGen;
+}
+
+const GEMINI_MODEL = "gemini-2.5-flash-image";
+
+/** Map a face's aspect ratio to the nearest ratio the Gemini image API accepts. */
+function geminiAspect(aspectRatio: string): string {
+  const [w, h] = aspectRatio.split(":").map(Number);
+  const r = w / h;
+  if (r <= 0.6) return "9:16"; // spine / very tall
+  if (r <= 0.85) return "3:4"; // portrait cover
+  if (r < 1.2) return "1:1";
+  if (r < 1.6) return "4:3";
+  return "16:9";
+}
+
+/** {@link ImageGen} backed by the Gemini image API (GEMINI_API_KEY). */
+export function geminiImageGen(apiKey: string, model = GEMINI_MODEL): ImageGen {
+  return async (prompt, aspectRatio) => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { imageConfig: { aspectRatio: geminiAspect(aspectRatio) } },
+      }),
+    });
+    if (res.status === 429) throw new SourceUnavailableError(BOX_ART_SOURCE, "gemini image rate-limited (429)");
+    if (!res.ok) throw new Error(`gemini image ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { inlineData?: { data?: string } }[] } }[];
+    };
+    const parts = data?.candidates?.[0]?.content?.parts ?? [];
+    const b64 = parts.find((p) => p.inlineData?.data)?.inlineData?.data;
+    if (!b64) throw new Error(`gemini returned no image for prompt: ${prompt.slice(0, 60)}…`);
+    return Uint8Array.from(Buffer.from(b64, "base64"));
+  };
 }
 
 /**

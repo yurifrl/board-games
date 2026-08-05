@@ -6,26 +6,36 @@ import type { SlotView } from "./slots.ts";
 import type { Member } from "./members.ts";
 import { sign } from "./asset/auth.ts";
 import { boxArtKey } from "./asset/box-contract.ts";
+import { displayKey } from "./asset/studio.ts";
 import { ProviderPane } from "./provider-view.tsx";
 import { renderNote } from "./note-render.ts";
 
-// Signed cover URL: prefer BGG's full-res original, fall back to Ludopedia,
-// else the note's raw image / a placeholder.
+// Chosen (promoted) image slot the app renders — a stable `.png` URL per game+face.
+export function signedDisplay(entity: string, face: "front" | "spine", w?: number, h?: number): string {
+  const key = displayKey(entity, face);
+  return `/asset/${entity}/display/${face}/latest.png?${sign(key, { w, h })}`;
+}
+
+// Auto cover from a pull provider — the fallback shown until a pick is promoted.
 export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400, h?: number): string {
   const key = { entity, kind: "cover", source, variant: "original", ext: "jpg" };
   return `/asset/${entity}/cover/${source}/original.jpg?${sign(key, { w, h })}`;
 }
 
-// Signed URL for a game's generated spine face. Missing art 404s and the <img>
-// drops itself (onerror), revealing the tinted default spine underneath.
+// Spine: prefer the promoted display/spine, else the old generated spine face.
 export function signedSpine(entity: string): string {
+  return signedDisplay(entity, "spine", 208, 628);
+}
+function genSpine(entity: string): string {
   const key = boxArtKey(entity, "spine");
   return `/asset/${entity}/spine/gen/${key.variant}.${key.ext}?${sign(key, { w: 208, h: 628 })}`;
 }
 
-const coverSrc = (g: Game, w = 400, h?: number): string => {
-  const source = g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null;
-  return source ? signedCover(g.id, source, w, h) : g.image ?? "";
+const coverProvider = (g: Game): "bgg" | "ludopedia" | null => (g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null);
+const coverSrc = (g: Game, w = 400, h?: number): string => signedDisplay(g.id, "front", w, h);
+const coverFallback = (g: Game, w = 400, h?: number): string => {
+  const s = coverProvider(g);
+  return s ? signedCover(g.id, s, w, h) : g.image ?? "";
 };
 
 const canSeeSale = (perm: Permission) => !!perm.canSeePrices || !!perm.admin;
@@ -53,9 +63,10 @@ export { Layout };
 // image 404s (onerror drops the img, revealing the card underneath).
 const CoverImg: FC<{ g: Game; cls: string; w?: number; h?: number; ar?: string }> = ({ g, cls, w, h, ar }) => {
   const src = coverSrc(g, w, h);
+  const fb = coverFallback(g, w, h);
   return (
     <span class={`${cls} cover-ph`} style={`--tint:${g.tint ?? "#3a3a44"}${ar ? `;aspect-ratio:${ar}` : ""}`} data-name={g.name}>
-      {src ? <img src={src} alt={g.name} loading="lazy" onerror="this.remove()" /> : null}
+      {src ? <img src={src} alt={g.name} loading="lazy" data-fb={fb || undefined} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" /> : null}
     </span>
   );
 };
@@ -178,7 +189,7 @@ const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
   return (
     <a class="spine" href={`#g-${g.slug}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
       <span class="spine-name">{g.name}</span>
-      <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" onerror="this.remove()" />
+      <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" data-fb={genSpine(g.id)} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" />
     </a>
   );
 };
@@ -188,7 +199,7 @@ const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
 const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ grp, perm, whatsapp }) => {
   const g = grp.base;
   const tint = g.tint ?? "#3a3a44";
-  const bg = coverSrc(g);
+  const bg = coverFallback(g);
   const showSale = canSeeSale(perm) && (!!g.salePrice || !!g.price);
   return (
     <div class="detail" id={`g-${g.slug}`} style={`--tint:${tint}`}>
@@ -506,7 +517,8 @@ export function collectionPage(opts: {
     <Layout title="Coleção de jogos de tabuleiro" bodyClass={view === "spine" ? "view-spine" : undefined}>
       <div class="topbar collection-topbar">
         <div class="right">
-          <button id="view-toggle" class="view-toggle" type="button" aria-pressed="false" aria-label="Alternar estante e lombadas" title="Alternar estante e lombadas">▤</button>
+          <button id="view-toggle" class="view-toggle" type="button" aria-pressed="false" aria-label="Alternar estante e lombadas" title="Alternar estante e lombadas">⇄</button>
+          <span class="view-toggle-label" aria-hidden="true">trocar visualização</span>
           {perm.admin ? (
             <a class="btn" href="/admin/requests">Solicitações</a>
           ) : null}
