@@ -227,6 +227,7 @@ export const studioPage = (items: Studio[], opts: Opts): string =>
 
 const CSS = `
 *{box-sizing:border-box}
+html,body{max-width:100%;overflow-x:hidden}
 body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#14141a;color:#e8e8ee}
 header{position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:#1c1c26cc;backdrop-filter:blur(8px);border-bottom:1px solid #2a2a38}
 header h1{font-size:17px;margin:0}
@@ -341,8 +342,10 @@ body[data-view=front] .tile .spine,body[data-view=spine] .tile .front{display:no
   .fpane{grid-template-columns:1fr;grid-template-rows:auto auto auto;overflow:auto}
   .rail{border-right:0;border-bottom:1px solid #2a2a38}
   .side{border-left:0;border-top:1px solid #2a2a38}
-  .preview{min-height:52vh}
+  .preview{min-height:44vh}
   .dhead b{width:100%}
+  .card{--h:150px}
+  .tile .front{max-width:calc(100vw - 40px)}
 }
 `;
 
