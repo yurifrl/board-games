@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-ut7",
+  "title": "D1: deploy to prod + end-to-end verification of workstreams A, B, C",
+  "description": "Plan: .agents/plans/2026-09-05_16-34-obsidian-down-last-good-cache.md — Verification sections A.3, B, C-prod (epic tk-vau).\n\nAfter A2 + B1 + B2 + B3 + C1 are done and merged (CI builds image per commit, ghcr yurifrl/board-games:latest + short-sha tags):\n1. helm upgrade with updated chart (cluster: talos, KUBECONFIG=~/.kube/config-dell01).\n2. Verify A: _backup/ objects in the assets bucket; submit a manual board-games-sync workflow → Succeeded.\n3. Verify B: push a vault commit → sync auto-fires; cronworkflow list empty.\n4. Verify C: promote via bg-admin → hard-reload bg.syscd.live → new cover immediately (no 24h wait).\nOptional disruptive drill (only on request): scale obsidian to 0, wipe /data/catalog.json on the PVC, run sync, assert restored + site serves games, scale back.",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-05T20:10:58.685Z",
+  "updated_at": "2026-09-05T20:11:10.437Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-vau",
+  "labels": [
+    "deploy",
+    "verification"
+  ],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": "bg.syscd.live serves the catalog after a fresh-PVC + dead-Obsidian restore path; vault push auto-syncs within ~a minute; promotion reflects on live immediately; no cron workflows remain; all unit suites green.",
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": null,
+  "metadata": {},
+  "dependencies": [
+    {
+      "issue_id": "tk-ut7",
+      "depends_on_id": "tk-bxc",
+      "type": "blocks",
+      "created_at": "2026-09-05T20:11:10.412Z",
+      "created_by": "yuri",
+      "metadata": {}
+    },
+    {
+      "issue_id": "tk-ut7",
+      "depends_on_id": "tk-axx",
+      "type": "blocks",
+      "created_at": "2026-09-05T20:11:10.420Z",
+      "created_by": "yuri",
+      "metadata": {}
+    },
+    {
+      "issue_id": "tk-ut7",
+      "depends_on_id": "tk-iqt",
+      "type": "blocks",
+      "created_at": "2026-09-05T20:11:10.428Z",
+      "created_by": "yuri",
+      "metadata": {}
+    },
+    {
+      "issue_id": "tk-ut7",
+      "depends_on_id": "tk-7hg",
+      "type": "blocks",
+      "created_at": "2026-09-05T20:11:10.433Z",
+      "created_by": "yuri",
+      "metadata": {}
+    },
+    {
+      "issue_id": "tk-ut7",
+      "depends_on_id": "tk-eog",
+      "type": "blocks",
+      "created_at": "2026-09-05T20:11:10.437Z",
+      "created_by": "yuri",
+      "metadata": {}
+    }
+  ],
+  "dependency_count": 5,
+  "dependent_count": 0,
+  "comments": [],
+  "comment_count": 0
+}

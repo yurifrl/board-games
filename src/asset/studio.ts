@@ -64,14 +64,15 @@ export async function history(service: AssetService, id: string, face: Face): Pr
     }
     return e;
   };
-  for (const kind of kinds) {
-    const [orig, cache] = await Promise.all([
-      service.listOrigin({ entity: id, kind }),
-      service.listCache({ entity: id, kind }),
-    ]);
-    for (const k of orig) ensure(k).onGcs = true;
-    for (const k of cache) ensure(k).onDisk = true;
-  }
+  // One listing per tier for the whole entity (not per kind): the admin index
+  // renders every game's history, and kind-scoped prefixes multiply the GCS
+  // round-trips by the number of stored kinds.
+  const [orig, cache] = await Promise.all([
+    service.listOrigin({ entity: id }),
+    service.listCache({ entity: id }),
+  ]);
+  for (const k of orig) if (kinds.includes(k.kind)) ensure(k).onGcs = true;
+  for (const k of cache) if (kinds.includes(k.kind)) ensure(k).onDisk = true;
   // Flag the candidate currently promoted to the display slot (recorded as the
   // display blob's fingerprint at promote time).
   const chosen = await chosenSourcePath(service, id, face);

@@ -69,3 +69,19 @@ test("render returns null when the original is missing", async () => {
   const { service } = svc();
   expect(await service.render(base, new URLSearchParams())).toBeNull();
 });
+
+test("removeDerivativesOf sweeps the original's resizes only", async () => {
+  const { cache, service } = svc();
+  const other: AssetKey = { ...base, source: "ludopedia" };
+  await service.put(base, { bytes: new Uint8Array([1]), contentType: "image/jpeg", fingerprint: "fp1" });
+  await service.put(other, { bytes: new Uint8Array([2]), contentType: "image/jpeg", fingerprint: "fp2" });
+  await service.render(base, new URLSearchParams("w=300")); // 300w-<tag fp1>
+  await service.render(other, new URLSearchParams("w=300")); // 300w-<tag fp2>
+
+  await service.removeDerivativesOf(base);
+
+  const variants = (await cache.list({ entity: "g1", kind: "cover" })).map((k) => `${k.source}/${k.variant}`);
+  expect(variants.some((v) => v.startsWith("bgg/300w-"))).toBe(false); // swept
+  expect(variants).toContain("bgg/original"); // the original itself stays
+  expect(variants.some((v) => v.startsWith("ludopedia/300w-"))).toBe(true); // sibling source untouched
+});

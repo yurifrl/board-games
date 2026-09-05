@@ -40,3 +40,15 @@ tasks:
       ASSETS_GCS_BUCKET: syscd-board-games-assets-d2a20e60-741d-43d4-a9b1-b2c4529e255d
     cmds:
       - bun run src/worker/gen-box-art.ts {{.CLI_ARGS}}
+
+  admin:
+    desc: "Cover studio (tiered: disk cache + GCS origin) — badges show what's in the bucket"
+    deps: [envs:op]
+    dotenv: ['.env']
+    env:
+      # Same assets service account gen-box-art uses; the gcal SA in .env has no
+      # storage.objects.list on the bucket.
+      GOOGLE_APPLICATION_CREDENTIALS: '{{.ROOT_DIR}}/.secrets/gcs-key.json'
+      ASSETS_GCS_BUCKET: syscd-board-games-assets-d2a20e60-741d-43d4-a9b1-b2c4529e255d
+    cmds:
+      - bun run src/admin/index.ts

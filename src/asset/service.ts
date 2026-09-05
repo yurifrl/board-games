@@ -66,6 +66,18 @@ export class AssetService {
     await this.cache.del(key);
   }
 
+  /** Delete the fingerprint-tagged derivative variants (the resizes
+   * {@link render} created) of an original — cache-only, like the derivatives
+   * themselves — so a deleted original doesn't leave phantom candidates behind.
+   * Call BEFORE removing the original: the sweep needs its fingerprint. */
+  async removeDerivativesOf(key: AssetKey): Promise<void> {
+    const head = (await this.cache.head(key)) ?? (await this.origin.head(key));
+    if (!head?.fingerprint) return;
+    const suffix = `-${tag(head.fingerprint)}`;
+    const keys = await this.cache.list({ entity: key.entity, kind: key.kind, source: key.source });
+    await Promise.all(keys.filter((k) => k.variant.endsWith(suffix)).map((k) => this.cache.del(k)));
+  }
+
   /** List keys under a prefix from each tier (for tier-aware history). */
   listOrigin(prefix: { entity: string; kind?: string; source?: string }): Promise<AssetKey[]> {
     return this.origin.list(prefix);

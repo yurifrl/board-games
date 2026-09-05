@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-bxc",
+  "title": "A2: wire restore-first + backup-last into worker cycle, chart/docs comments",
+  "description": "Plan: .agents/plans/2026-09-05_16-34-obsidian-down-last-good-cache.md — Workstream A, steps 2-3 (epic tk-vau).\n\nsrc/worker/index.ts:\n- const STORE_BACKUP_FILES = [\"catalog.json\", \"users.json\"] (exactly the Obsidian-derived state).\n- FIRST step in cycle(): step(\"restore\", ...) — a fresh/lost volume is repopulated from GCS before the Obsidian attempt, so a fully-down Obsidian still leaves the site serving last-good data.\n- LAST step: step(\"backup\", ...) — only meaningful after a successful catalog-write.\nDocs: chart/values.yaml comment under assetsGcsBucket noting the _backup/ mirror; src/store.ts header comment notes the mirror.",
+  "status": "open",
+  "priority": 1,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-05T20:10:58.660Z",
+  "updated_at": "2026-09-05T20:11:10.392Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": "tk-vau",
+  "labels": [
+    "resilience",
+    "worker"
+  ],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": "Local drill vs real bucket: seed via `task sync` → _backup/catalog.json + _backup/users.json objects exist with sha256 metadata; then fresh DATA_DIR=$(mktemp -d), OBSIDIAN_API_URL=https://127.0.0.1:9 (dead), SYNC_ONCE=1 bun run src/worker/index.ts → 'restore:' pulls last-good files, 'catalog failed:' stays isolated, restored files present and parseable. Full bun test green.",
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": null,
+  "metadata": {},
+  "dependencies": [
+    {
+      "issue_id": "tk-bxc",
+      "depends_on_id": "tk-w6l",
+      "type": "blocks",
+      "created_at": "2026-09-05T20:11:10.391Z",
+      "created_by": "yuri",
+      "metadata": {}
+    }
+  ],
+  "dependency_count": 1,
+  "dependent_count": 0,
+  "comments": [],
+  "comment_count": 0
+}

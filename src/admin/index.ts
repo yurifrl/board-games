@@ -15,7 +15,7 @@ import { generateFace, composePrompt } from "../asset/gen/generate.ts";
 import { obsidianEnabled, readGlobalStyleRaw, saveGlobalStyle, DEFAULT_GLOBAL_STYLE, readGameArtNote, saveGameArtNote } from "../asset/gen/prompt-store.ts";
 import type { AssetKey } from "../asset/key.ts";
 import type { Face } from "../asset/box-contract.ts";
-import { studioPage, type Studio } from "./views.tsx";
+import { studioPage, renderFacePane, type Studio } from "./views.tsx";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 const DATA_DIR = env("DATA_DIR", "./data");
@@ -92,7 +92,17 @@ app.post("/studio/:id/art-note", async (c) => {
   const form = await c.req.parseBody();
   const ok = await saveGameArtNote(c.req.param("id"), String(form["text"] ?? ""));
   if (!ok) return c.text("note not found in vault", 404);
-  return c.redirect("/");
+  return c.json({ ok: true });
+});
+
+// Single face-pane fragment — for in-place AJAX refresh after a detail action.
+app.get("/studio/:id/pane/:face", async (c) => {
+  const face = c.req.param("face");
+  if (!isFace(face)) return c.text("bad face", 400);
+  const game = await gameById(c.req.param("id"));
+  if (!game) return c.text("not found", 404);
+  const hist = await history(service, game.id, face);
+  return c.html(renderFacePane(game, face, hist, { gcs: tiered, providers: PROVIDERS, obsidian: OBSIDIAN }));
 });
 
 app.post("/studio/:id/:face/upload", async (c) => {
@@ -108,7 +118,7 @@ app.post("/studio/:id/:face/upload", async (c) => {
   const ext = extFor(file.name, contentType);
   const fingerprint = createHash("sha256").update(bytes).digest("hex");
   await addCandidate(service, id, face, "upload", { bytes, contentType, fingerprint }, ext);
-  return c.redirect("/");
+  return c.json({ ok: true });
 });
 
 // Composed default prompt (for prefilling the live-edit box).
@@ -137,7 +147,7 @@ app.post("/studio/:id/:face/generate", async (c) => {
   } catch (e) {
     return c.text(`generation failed: ${(e as Error).message}`, 502);
   }
-  return c.redirect("/");
+  return c.json({ ok: true });
 });
 
 const keyFromForm = async (c: { req: { parseBody: () => Promise<Record<string, unknown>>; param: (n: string) => string } }): Promise<{ key: AssetKey; face: Face } | null> => {
@@ -157,7 +167,7 @@ app.post("/studio/:id/:face/promote", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
   await promote(service, r.key, r.face);
-  return c.redirect("/");
+  return c.json({ ok: true });
 });
 
 // Persist a candidate to the durable origin (GCS).
@@ -165,7 +175,7 @@ app.post("/studio/:id/:face/save", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
   await service.save(r.key);
-  return c.redirect("/");
+  return c.json({ ok: true });
 });
 
 // Delete from the durable origin (GCS) only — keeps the local copy.
@@ -173,17 +183,22 @@ app.post("/studio/:id/:face/gcs-delete", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
   await service.removeOrigin(r.key);
-  return c.redirect("/");
+  return c.json({ ok: true });
 });
 
 // Delete the local copy. When GCS is off this is the only tier, so it's a full
-// delete; when GCS is on the durable copy stays until gcs-delete.
+// delete; when GCS is on the durable copy stays until gcs-delete — or the
+// delete dialog sends also=gcs to remove both tiers in one shot.
 app.post("/studio/:id/:face/delete", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
-  if (tiered) await service.removeCache(r.key);
-  else await service.remove(r.key);
-  return c.redirect("/");
+  const form = await c.req.parseBody(); // cached: keyFromForm already parsed it
+  await service.removeDerivativesOf(r.key); // sweep its resizes first; else they linger as phantom rows
+  if (tiered) {
+    await service.removeCache(r.key);
+    if (String(form["also"] ?? "") === "gcs") await service.removeOrigin(r.key);
+  } else await service.remove(r.key);
+  return c.json({ ok: true });
 });
 
 // ---- Bulk generation (background job + progress polling) --------------------
@@ -232,7 +247,7 @@ app.post("/studio/:id/download", async (c) => {
   const game = await gameById(c.req.param("id"));
   if (!game) return c.text("not found", 404);
   await runPipeline([toEntity(game)], sources, service, undefined, { force: true });
-  return c.redirect("/");
+  return c.json({ ok: true });
 });
 
 // Bulk download / refresh cover candidates for selected games (background job).
@@ -264,4 +279,4 @@ app.get("/healthz", (c) => c.json({ ok: true }));
 app.route("/", serve); // signed asset rendering (shared secret with the app)
 
 console.log(`bg-admin listening on :${PORT} (data ${DATA_DIR}, tiered=${tiered}, gcs=${GCS}, openai=${OPENAI}, gemini=${GEMINI}, obsidian=${OBSIDIAN})`);
-export default { port: PORT, fetch: app.fetch };
+export default { port: PORT, fetch: app.fetch, idleTimeout: 60 }; // tiered mode lists GCS per game; default 10s times out the index

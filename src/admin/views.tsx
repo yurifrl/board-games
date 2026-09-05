@@ -85,7 +85,7 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
         </div>
         <div class="vlist">
           <form class="add" method="post" action={`/studio/${g.id}/${face}/upload`} enctype="multipart/form-data">
-            <label title="Enviar imagem do computador">＋<input type="file" name="file" accept="image/*" onchange="this.form.submit()" /></label>
+            <label title="Enviar imagem do computador">＋<input type="file" name="file" accept="image/*" onchange="this.form.requestSubmit()" /></label>
           </form>
           {history.map((c) => <VRow c={c} gcs={opts.gcs} />)}
           {history.length === 0 ? <div class="empty">sem histórico ainda</div> : null}
@@ -98,14 +98,14 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
         <div class="actbar" hidden>
           <form method="post" action={`/studio/${g.id}/${face}/promote`}>{hidden}<button class="btn primary" title="Tornar esta a imagem exibida">★ Promover</button></form>
           <form method="post" action={`/studio/${g.id}/${face}/save`} class="act-save">{hidden}<button class="btn">☁ Salvar no GCS</button></form>
-          <form method="post" action={`/studio/${g.id}/${face}/gcs-delete`} class="act-gdel" onsubmit="return confirm('Remover do GCS? (mantém a cópia local)')">{hidden}<button class="btn warn">☁ Remover do GCS</button></form>
-          <form method="post" action={`/studio/${g.id}/${face}/delete`} onsubmit="return confirm(this.dataset.msg)" data-msg={opts.gcs ? "Apagar a cópia local?" : "Apagar esta imagem?"}>{hidden}<button class="btn danger">🗑 Apagar</button></form>
+          <form method="post" action={`/studio/${g.id}/${face}/gcs-delete`} class="act-gdel">{hidden}<button class="btn warn">☁ Remover do GCS</button></form>
+          <form method="post" action={`/studio/${g.id}/${face}/delete`}>{hidden}<button class="btn danger">🗑 Apagar</button></form>
         </div>
       </div>
       {opts.providers.length > 0 ? (
         <aside class="side">
           <div class="gptitle">Gerar {face === "front" ? "frente" : "lombada"}</div>
-          <form method="post" action={`/studio/${g.id}/${face}/generate`} onsubmit="var b=this.querySelector('.gengo');b.disabled=true;b.textContent='gerando…';">
+          <form method="post" action={`/studio/${g.id}/${face}/generate`}>
             <textarea name="prompt" class="prompt" rows={8} placeholder="carregando prompt padrão…"></textarea>
             <div class="gpcontrols">
               {opts.providers.length > 1 ? (
@@ -122,6 +122,10 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
     </div>
   );
 };
+
+// Fragment renderer: one face pane's HTML, for in-place AJAX refresh after an action.
+export const renderFacePane = (g: Game, face: Face, history: Candidate[], opts: Opts): string =>
+  "" + (<FacePane g={g} face={face} history={history} opts={opts} />);
 
 const Tile: FC<{ s: Studio; opts: Opts }> = ({ s, opts }) => {
   const g = s.game;
@@ -146,7 +150,7 @@ const Tile: FC<{ s: Studio; opts: Opts }> = ({ s, opts }) => {
             <button type="button" data-f="front" class="on">Frente</button>
             <button type="button" data-f="spine">Lombada</button>
           </div>
-          <form method="post" action={`/studio/${g.id}/download`} class="dlform" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='baixando…';"><button type="submit" class="dlbtn" title="Rebaixar capas BGG/Ludopedia">⬇ Baixar capas</button></form>
+          <form method="post" action={`/studio/${g.id}/download`} class="dlform"><button type="submit" class="dlbtn" title="Rebaixar capas BGG/Ludopedia">⬇ Baixar capas</button></form>
           <button type="button" class="close" title="Fechar">✕</button>
         </div>
         {opts.obsidian ? (
@@ -219,6 +223,17 @@ export const studioPage = (items: Studio[], opts: Opts): string =>
             </form>
           </dialog>
         ) : null}
+        {opts.gcs ? (
+          <dialog id="delDlg">
+            <h3>Apagar imagem</h3>
+            <p class="hint">Esta cópia existe localmente e no GCS (☁). O que apagar?</p>
+            <div class="genrow">
+              <button type="button" id="delCancel" class="gsclose">Cancelar</button>
+              <button type="button" id="delLocal" class="btn">🗑 Só local</button>
+              <button type="button" id="delBoth" class="btn danger">☁ Local + GCS</button>
+            </div>
+          </dialog>
+        ) : null}
         <main>{items.map((s) => <Tile s={s} opts={opts} />)}</main>
         <script dangerouslySetInnerHTML={{ __html: JS }} />
       </body>
@@ -241,10 +256,10 @@ header h1{font-size:17px;margin:0}
 body[data-sel] #bulkbar{display:flex}
 #bulkbar input,#bulkbar select{background:#0f0f16;border:1px solid #2a2a38;color:#e8e8ee;border-radius:8px;padding:6px 10px}
 #bulkbar #pat{flex:1;min-width:160px}
-#bulkbar button{border:0;border-radius:8px;padding:6px 12px;cursor:pointer}
-#patGo{background:#2a2a38;color:#cfcfe0}
-#bulkDl,.dlbtn{background:#2a2a38;color:#cfcfe0}
-.dlform{display:inline;margin:0 auto 0 0}
+dialog#globalStyleDlg,dialog#delDlg{width:min(680px,92vw);background:#1c1c26;color:#e8e8ee;border:1px solid #2a2a38;border-radius:14px;padding:18px}
+dialog#globalStyleDlg::backdrop,dialog#delDlg::backdrop{background:#0009}
+dialog#globalStyleDlg h3,dialog#delDlg h3{margin:0 0 10px;font-size:15px}
+dialog#globalStyleDlg .hint,dialog#delDlg .hint{color:#8a8a9a;font-weight:400;font-size:12px}
 .dlbtn{border:0;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px}
 #selCount,#bulkProg{color:#9a9ab0;font-size:12px}
 .card .pick{display:none;position:absolute;top:8px;left:8px;z-index:3;width:20px;height:20px;cursor:pointer}
@@ -339,7 +354,7 @@ body[data-view=front] .tile .spine,body[data-view=spine] .tile .front{display:no
 .gengo:disabled{opacity:.6;cursor:default}
 
 @media(max-width:900px){
-  .fpane{grid-template-columns:1fr;grid-template-rows:auto auto auto;overflow:auto}
+  .fpane{grid-template-columns:1fr;grid-template-rows:auto auto auto;height:auto;overflow:auto}
   .rail{border-right:0;border-bottom:1px solid #2a2a38}
   .side{border-left:0;border-top:1px solid #2a2a38}
   .preview{min-height:44vh}
@@ -424,6 +439,68 @@ function bulkCount(){var el=document.getElementById('selCount');if(el)el.textCon
   if(dl)dl.onclick=function(){runBulk('/bulk/download',{});};
 })();
 document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.card.open').forEach(function(c){c.classList.remove('open');});});
+
+// ---- keep every detail action IN-PLACE (no navigation, no reload) ----
+// The detail is a client overlay; a form POST used to 302 -> / and blow it away.
+// Intercept all detail-form submits, fetch() them, and re-render the touched
+// face pane from a server fragment so the overlay never closes.
+function skipDeleteConfirm(){return localStorage.getItem('studioSkipDelete')==='1';}
+function flash(btn,txt){if(!btn)return;var o=btn.dataset.o||btn.textContent;btn.dataset.o=o;btn.textContent=txt;setTimeout(function(){btn.textContent=o;},1200);}
+function updateTile(id,face,row){
+  if(!row)return;var card=document.querySelector('.card[data-id="'+id+'"]');if(!card)return;
+  var img=card.querySelector(face==='front'?'.tile .front img':'.tile .spine img');
+  if(img){img.removeAttribute('data-fb');img.src=row.dataset.src;}
+}
+function refreshPane(det,id,face){
+  return fetch('/studio/'+id+'/pane/'+face).then(function(r){return r.text();}).then(function(html){
+    var old=det.querySelector('.fpane[data-face="'+face+'"]');if(!old)return;
+    var tmp=document.createElement('div');tmp.innerHTML=html;var neu=tmp.querySelector('.fpane');
+    if(neu){old.replaceWith(neu);initPane(neu);}
+  });
+}
+
+// delete choice: a GCS-backed candidate (☁) can go local-only or local+GCS
+var delDlg=document.getElementById('delDlg'),delForm=null;
+if(delDlg){
+  var delGo=function(alsoGcs){
+    var f=delForm;delForm=null;delDlg.close();
+    if(!f)return;
+    if(alsoGcs){var i=document.createElement('input');i.type='hidden';i.name='also';i.value='gcs';f.appendChild(i);}
+    f.dataset.confirmed='1';submitDetailForm(f);
+  };
+  delDlg.querySelector('#delCancel').onclick=function(){delForm=null;delDlg.close();};
+  delDlg.querySelector('#delLocal').onclick=function(){delGo(false);};
+  delDlg.querySelector('#delBoth').onclick=function(){delGo(true);};
+}
+function submitDetailForm(form){
+  var act=form.getAttribute('action')||'';
+  var det=form.closest('.detail');var id=det.dataset.id;
+  var pane=form.closest('.fpane');var face=pane?pane.dataset.face:null;
+  var isGdel=act.indexOf('/gcs-delete')>=0,isDel=!isGdel&&act.indexOf('/delete')>=0;
+  if((isDel||isGdel)&&!skipDeleteConfirm()&&!form.dataset.confirmed){
+    var row=pane?pane.querySelector('.vrow.sel'):null;
+    // GCS-backed pick: offer local-only vs local+GCS instead of a plain confirm
+    if(isDel&&row&&row.dataset.ongcs==='1'){delForm=form;delDlg.showModal();return;}
+    if(!confirm(isGdel?'Remover do GCS? (mantém a cópia local)':'Apagar esta imagem?'))return;
+  }
+  if(form.dataset.confirmed)delete form.dataset.confirmed;
+  var btn=form.querySelector('button[type=submit],button:not([type])');
+  if(btn){btn.dataset.o=btn.dataset.o||btn.textContent;btn.disabled=true;if(act.indexOf('/generate')>=0)btn.textContent='gerando…';}
+  fetch(act,{method:'POST',body:new FormData(form)}).then(function(r){
+    if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});
+  }).then(function(){
+    if(act.indexOf('/promote')>=0&&pane)updateTile(id,face,pane.querySelector('.vrow.sel'));
+    if(act.indexOf('/art-note')>=0){flash(btn,'salvo ✓');return;}
+    if(act.indexOf('/download')>=0)return Promise.all([refreshPane(det,id,'front'),refreshPane(det,id,'spine')]);
+    if(face)return refreshPane(det,id,face);
+  }).catch(function(e){alert('falhou: '+e.message);}).finally(function(){
+    if(btn){btn.disabled=false;if(act.indexOf('/art-note')<0&&btn.dataset.o){btn.textContent=btn.dataset.o;}}
+  });
+}
+document.addEventListener('submit',function(e){
+  var form=e.target;if(!form||!form.closest||!form.closest('.detail'))return;
+  e.preventDefault();submitDetailForm(form);
+});
 
 // face tabs inside a detail
 document.querySelectorAll('.detail .facetabs button').forEach(function(b){
