@@ -43,7 +43,8 @@ export class BggCoverSource implements AssetSource {
     if (!imageUrl) throw new Error(`bgg ${bggId}: no <image>`);
 
     const img = await fetch(imageUrl, { headers: { "User-Agent": UA } });
-    if (!img.ok) throw new Error(`bgg image ${img.status}`);
+    if (img.status === 429) throw new SourceUnavailableError(this.id, "bgg image rate-limited (429)");
+    if (!img.ok) throw new SourceUnavailableError(this.id, `bgg image ${img.status}`);
     return {
       bytes: new Uint8Array(await img.arrayBuffer()),
       contentType: img.headers.get("content-type") ?? "image/jpeg",

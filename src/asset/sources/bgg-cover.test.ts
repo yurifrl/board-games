@@ -12,3 +12,18 @@ test("fingerprints by id (not image/grid), keyed as the cover original", async (
   expect(asset.fingerprint).toBe("bgg:178900");
   expect(asset.key).toEqual({ entity: "g1", kind: "cover", source: "bgg", variant: "original", ext: "jpg" });
 });
+
+test("non-200 image fetch defers instead of failing the sync", async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) =>
+    String(input).includes("xmlapi2")
+      ? new Response("<things><item><image>https://x/img.jpg</image></item></things>", { status: 200 })
+      : new Response("nope", { status: 500 })) as unknown as typeof fetch;
+  try {
+    const s = new BggCoverSource();
+    const [asset] = await s.discover({ id: "g1", name: "G", bggId: "999999" });
+    await expect(asset.fetch()).rejects.toMatchObject({ name: "SourceUnavailableError" });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

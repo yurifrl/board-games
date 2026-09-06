@@ -36,7 +36,11 @@ export class LudopediaCoverSource implements AssetSource {
         fingerprint: String(id),
         fetch: async (): Promise<AssetBlob> => {
           const r = await fetch(url);
-          if (!r.ok) throw new Error(`ludopedia capa ${r.status}`);
+          // The public capa bucket answers 403 for absent objects too, so a
+          // stale/renamed id (note's ludopedia/id wrong) is "not found", not
+          // an outage — treat any non-200 as unavailable and defer instead of
+          // failing the whole sync.
+          if (!r.ok) throw new SourceUnavailableError(this.id, `ludopedia capa ${r.status}`);
           return {
             bytes: new Uint8Array(await r.arrayBuffer()),
             contentType: r.headers.get("content-type") ?? "image/jpeg",
