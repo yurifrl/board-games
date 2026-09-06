@@ -15,7 +15,7 @@ import { generateFace, composePrompt } from "../asset/gen/generate.ts";
 import { obsidianEnabled, readGlobalStyleRaw, saveGlobalStyle, DEFAULT_GLOBAL_STYLE, readGameArtNote, saveGameArtNote } from "../asset/gen/prompt-store.ts";
 import type { AssetKey } from "../asset/key.ts";
 import type { Face } from "../asset/box-contract.ts";
-import { studioPage, renderFacePane, type Studio } from "./views.tsx";
+import { studioPage, renderFacePane } from "./views.tsx";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 const DATA_DIR = env("DATA_DIR", "./data");
@@ -56,16 +56,22 @@ const extFor = (name: string, contentType: string): string => {
   return contentType === "image/png" ? "png" : contentType === "image/jpeg" ? "jpg" : "png";
 };
 
-app.get("/", async (c) => {
+const studioOpts = { gcs: tiered, providers: PROVIDERS, obsidian: OBSIDIAN };
+
+// Index: tiles only — candidate histories load per game on the detail route,
+// which is what made the old all-in-one index slow enough to need idleTimeout.
+app.get("/", async (c) => c.html(studioPage(await loadCatalog(DATA_DIR), studioOpts)));
+
+// Per-game studio detail under its own path (shareable /studio/<id>).
+app.get("/studio/:id", async (c) => {
   const games = await loadCatalog(DATA_DIR);
-  const items: Studio[] = await Promise.all(
-    games.map(async (game) => ({
-      game,
-      front: await history(service, game.id, "front"),
-      spine: await history(service, game.id, "spine"),
-    })),
-  );
-  return c.html(studioPage(items, { gcs: tiered, providers: PROVIDERS, obsidian: OBSIDIAN }));
+  const game = games.find((g) => g.id === c.req.param("id"));
+  if (!game) return c.text("Jogo não encontrado", 404);
+  const [front, spine] = await Promise.all([
+    history(service, game.id, "front"),
+    history(service, game.id, "spine"),
+  ]);
+  return c.html(studioPage(games, studioOpts, { game, front, spine }));
 });
 
 // Global house style (Obsidian Inventory note). GET prefills the editor with the
@@ -201,6 +207,49 @@ app.post("/studio/:id/:face/delete", async (c) => {
   return c.json({ ok: true });
 });
 
+// Bulk delete the marked candidates (multi-select in the version list). Body:
+// `keys` = JSON array of {provider, version, ext, kind}, optional `also=gcs`
+// to drop the durable copies too. Same tier semantics as the single delete.
+app.post("/studio/:id/:face/delete-many", async (c) => {
+  const face = c.req.param("face");
+  if (!isFace(face)) return c.text("bad request", 400);
+  const form = await c.req.parseBody();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(form["keys"] ?? "[]"));
+  } catch {
+    return c.text("bad request", 400);
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return c.text("bad request", 400);
+  const keys: AssetKey[] = [];
+  for (const k of parsed) {
+    if (typeof k !== "object" || k === null) return c.text("bad request", 400);
+    const o = k as Record<string, unknown>; // shape asserted below, field by field
+    const provider = typeof o.provider === "string" ? o.provider : "";
+    const version = typeof o.version === "string" ? o.version : "";
+    const ext = typeof o.ext === "string" ? o.ext : "";
+    const kind = typeof o.kind === "string" && o.kind ? o.kind : face;
+    if (!provider || !version || !ext) return c.text("bad request", 400);
+    keys.push({ entity: c.req.param("id"), kind, source: provider as Provider, variant: version, ext });
+  }
+  const alsoGcs = String(form["also"] ?? "") === "gcs";
+  const errors: string[] = [];
+  let deleted = 0;
+  await Promise.all(keys.map(async (key) => {
+    try {
+      await service.removeDerivativesOf(key); // sweep resizes first; else phantom rows
+      if (tiered) {
+        await service.removeCache(key);
+        if (alsoGcs) await service.removeOrigin(key);
+      } else await service.remove(key);
+      deleted++;
+    } catch (e) {
+      errors.push(`${key.source}/${key.variant}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }));
+  return c.json({ ok: errors.length === 0, deleted, errors });
+});
+
 // ---- Bulk generation (background job + progress polling) --------------------
 type BulkJob = { total: number; done: number; current: string; errors: string[]; running: boolean };
 const bulkJobs = new Map<string, BulkJob>();
@@ -279,4 +328,4 @@ app.get("/healthz", (c) => c.json({ ok: true }));
 app.route("/", serve); // signed asset rendering (shared secret with the app)
 
 console.log(`bg-admin listening on :${PORT} (data ${DATA_DIR}, tiered=${tiered}, gcs=${GCS}, openai=${OPENAI}, gemini=${GEMINI}, obsidian=${OBSIDIAN})`);
-export default { port: PORT, fetch: app.fetch, idleTimeout: 60 }; // tiered mode lists GCS per game; default 10s times out the index
+export default { port: PORT, fetch: app.fetch, idleTimeout: 60 }; // /studio/:id lists a game's GCS tier; default 10s can be tight on cold buckets

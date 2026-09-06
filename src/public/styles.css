@@ -295,6 +295,17 @@ body.view-spine .spines {
   background: var(--sale); color: #04120a;
 }
 
+/* Parted games (sold/traded/gifted): kept on the shelf for the memory, but
+   grayed out, blurred, and waving goodbye. */
+.box.parted .box3d, .spine.parted .spine-art, .spine.parted .spine-name { filter: grayscale(1) blur(2px); opacity: .8; }
+.box.parted .box-labels { filter: grayscale(1); }
+.bye {
+  position: absolute; top: 6px; right: 6px; z-index: 3;
+  font-size: 20px; line-height: 1;
+  filter: grayscale(1); opacity: .9; pointer-events: none;
+}
+.spine .bye { top: 8px; right: 50%; transform: translateX(50%); }
+
 @media (prefers-reduced-motion: reduce) {
   .box3d, .expansion-tag { transition: none; }
 }
@@ -308,13 +319,13 @@ body.view-spine .spines {
 
 /* ---- Game hub: opened game as a full-screen multi-page detail ---- */
 .detail { position: fixed; inset: 0; z-index: 30; display: none; }
-.detail:target { display: block; }
+.detail.open { display: block; }
 .detail-bg { position: absolute; inset: 0; background-size: cover; background-position: center;
   filter: blur(40px) brightness(.34) saturate(1.2); transform: scale(1.25); }
 .hub { position: absolute; inset: 0; z-index: 2; overflow-y: auto;
   background: linear-gradient(180deg, rgba(12,10,16,.55), rgba(6,4,10,.92));
   -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-.detail:target .hub { animation: fade .28s ease both; }
+.detail.open .hub { animation: fade .28s ease both; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .hub-inner { max-width: 780px; margin: 0 auto; padding: 40px 22px calc(60px + env(safe-area-inset-bottom)); }
 .close { position: fixed; top: 14px; right: 16px; z-index: 6; font-size: 20px; width: 40px; height: 40px;

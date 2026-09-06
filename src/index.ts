@@ -99,8 +99,10 @@ async function currentUser(c: Context) {
   return getPermission(DATA_DIR, claims.email);
 }
 
-/** Render the public collection, optionally with the login modal overlaid. */
-async function renderHome(c: Context, login?: { error?: string }, status = 200, view?: "shelf" | "spine") {
+/** Render the public collection, optionally with the login modal overlaid or
+ * one game's hub open (the /show/<slug> route). */
+async function renderHome(c: Context, opts: { login?: { error?: string }; status?: number; view?: "shelf" | "spine"; slug?: string } = {}) {
+  const { login, status = 200, view, slug } = opts;
   const perm = await currentUser(c);
   const isAuthed = !!perm;
   const effective = perm ?? PUBLIC_PERM;
@@ -109,6 +111,10 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200, 
   const games = showAll ? all : all.filter((g) => g.isGame);
   const hiddenCount = all.length - games.length;
   const groups = groupGames(games);
+  const active = slug ? groups.find((grp) => grp.base.slug?.toLowerCase() === slug.toLowerCase()) : undefined;
+  if (slug && !active) {
+    return c.html(noticePage({ title: "Jogo não encontrado", message: "Este jogo não faz parte da coleção." }), 404);
+  }
   const roles = await listRoles(DATA_DIR);
   const slots = await upcomingSessions(DATA_DIR);
   const mineSlots = perm
@@ -131,16 +137,20 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200, 
     mineSlots,
     login,
     view,
+    active,
   });
   return c.html(html, status as 200);
 }
 
 app.get("/", (c) => renderHome(c));
-app.get("/shelf", (c) => renderHome(c, undefined, 200, "shelf"));
-app.get("/spine", (c) => renderHome(c, undefined, 200, "spine"));
+app.get("/shelf", (c) => renderHome(c, { view: "shelf" }));
+app.get("/spine", (c) => renderHome(c, { view: "spine" }));
+
+// Shareable game detail: the collection page with one game's hub open.
+app.get("/show/:slug", (c) => renderHome(c, { slug: c.req.param("slug") }));
 
 // Hidden login: the public collection with the login modal floating above it.
-app.get("/login", (c) => renderHome(c, {}));
+app.get("/login", (c) => renderHome(c, { login: {} }));
 
 // Stateless password login for permanent users.
 app.post("/auth/login", async (c) => {
@@ -148,11 +158,11 @@ app.post("/auth/login", async (c) => {
   const email = String(form["email"] ?? "").trim().toLowerCase();
   const password = String(form["password"] ?? "");
   if (!email || !password) {
-    return renderHome(c, { error: "E-mail e senha são obrigatórios." }, 400);
+    return renderHome(c, { login: { error: "E-mail e senha são obrigatórios." }, status: 400 });
   }
   const perm = await authenticate(DATA_DIR, email, password);
   if (!perm) {
-    return renderHome(c, { error: "E-mail ou senha inválidos." }, 401);
+    return renderHome(c, { login: { error: "E-mail ou senha inválidos." }, status: 401 });
   }
   setSessionCookie(c, await issueSessionToken(SECRET, perm.email, SESSION_TTL_DAYS * 86400));
   return c.redirect("/");
@@ -181,10 +191,10 @@ app.post("/admin/invite", async (c) => {
 app.get("/auth/invite", async (c) => {
   const token = c.req.query("token") ?? "";
   const invite = await verifyInvite(SECRET, token);
-  if (!invite) return renderHome(c, { error: "Este link de convite é inválido." }, 401);
+  if (!invite) return renderHome(c, { login: { error: "Este link de convite é inválido." }, status: 401 });
 
   const tu = await getTmpUser(TMP_USERS_PATH, invite.email);
-  if (!tu) return renderHome(c, { error: "Este convite foi revogado." }, 401);
+  if (!tu) return renderHome(c, { login: { error: "Este convite foi revogado." }, status: 401 });
 
   const session = await issueSessionToken(SECRET, invite.email, SESSION_TTL_DAYS * 86400, { tmp: true });
   setSessionCookie(c, session);
@@ -213,12 +223,12 @@ app.get("/auth/google/callback", async (c) => {
   const state = c.req.query("state");
   const cookieState = getCookie(c, "g_state");
   deleteCookie(c, "g_state", { path: "/" });
-  if (!state || state !== cookieState) return renderHome(c, { error: "O login expirou. Tente novamente." }, 400);
+  if (!state || state !== cookieState) return renderHome(c, { login: { error: "O login expirou. Tente novamente." }, status: 400 });
 
   const code = c.req.query("code");
   if (!code) return c.redirect("/");
   const id = await exchangeCode(code, `${BASE_URL}/auth/google/callback`);
-  if (!id || !id.emailVerified) return renderHome(c, { error: "Não foi possível verificar sua conta do Google." }, 401);
+  if (!id || !id.emailVerified) return renderHome(c, { login: { error: "Não foi possível verificar sua conta do Google." }, status: 401 });
 
   // Always issue the session (identity is proven); permission is gated by member status.
   setSessionCookie(c, await issueSessionToken(SECRET, id.email, SESSION_TTL_DAYS * 86400, { google: true }));

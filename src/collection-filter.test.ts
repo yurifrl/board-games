@@ -5,6 +5,7 @@ import { parseGameNote } from "./worker/parse.ts";
 
 const game: Game = {
   id: "ark-nova",
+  slug: "ark-nova",
   name: "Ark Nova",
   type: "base",
   language: "English",
@@ -15,8 +16,7 @@ const game: Game = {
   purchasedAt: 1,
   forSale: false,
 };
-
-const render = (games: Game[], expansions: Game[] = []) => collectionPage({
+const render = (games: Game[], expansions: Game[] = [], withDetail = false) => collectionPage({
   groups: games.map((base, index) => ({ base, expansions: index === 0 ? expansions : [] })),
   totalGames: games.length + expansions.length,
   forSaleCount: 0,
@@ -30,6 +30,7 @@ const render = (games: Game[], expansions: Game[] = []) => collectionPage({
   hiddenCount: 0,
   slots: [],
   mineSlots: new Set(),
+  active: withDetail ? { base: games[0], expansions } : undefined,
 });
 
 describe("collection filters", () => {
@@ -53,7 +54,7 @@ describe("collection filters", () => {
     const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
 
     expect(boxStart).toBeGreaterThan(-1);
-    expect(boxHtml).toContain('href="#g-ark-nova"');
+    expect(boxHtml).toContain('href="/show/ark-nova"');
     expect(boxHtml).toContain('class="expansion-mark"');
     expect(boxHtml).toContain('class="expansion-tag"');
     expect(boxHtml).toContain("Marine Worlds");
@@ -185,7 +186,7 @@ describe("collection filters", () => {
   });
 
   test("renders notes as styled markdown with highlighted JSON", () => {
-    const html = render([{ ...game, notes: '# Setup\n\nUse **three cards**.\n\n```json\n{"players": 3}\n```' }]);
+    const html = render([{ ...game, notes: '# Setup\n\nUse **three cards**.\n\n```json\n{"players": 3}\n```' }], [], true);
 
     expect(html).toContain('class="notes-document"');
     expect(html).toContain("<h1>Setup</h1>");
@@ -290,5 +291,24 @@ describe("collection filters", () => {
     expect(html).toContain('data-search="ark nova strategy animals base"');
     expect(html).toContain('data-playtime="120"');
     expect(html).toContain('data-played="yes"');
+  });
+
+  test("keeps parted games visible but grayed out with a goodbye wave", async () => {
+    const html = render([{ ...game, partedDate: "2026-08-01" }]);
+    const css = await Bun.file(new URL("./public/styles.css", import.meta.url)).text();
+
+    expect(html).toContain('class="box parted"');
+    expect(html).toContain('class="spine parted"');
+    expect(html).toContain('<span class="bye" title="Fora da coleção">👋</span>');
+    expect(html).toContain("(values.parted==='parted'?d.parted==='yes':values.parted==='keep'?d.parted!=='yes':true)");
+    expect(html).toContain('name="game-parted" value="" checked=""');
+    expect(html).toContain('name="game-parted" value="keep"');
+    expect(css).toContain(".box.parted .box3d, .spine.parted .spine-art, .spine.parted .spine-name { filter: grayscale(1) blur(2px); opacity: .8; }");
+    expect(css).toContain(".spine .bye { top: 8px; right: 50%; transform: translateX(50%); }");
+
+    const kept = render([game]);
+    expect(kept).not.toContain('class="box parted"');
+    expect(kept).not.toContain('class="spine parted"');
+    expect(kept).not.toContain('class="bye"');
   });
 });

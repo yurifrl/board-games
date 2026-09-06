@@ -56,6 +56,7 @@ const VRow: FC<{ c: Candidate; gcs: boolean }> = ({ c, gcs }) => {
       data-ongcs={gcs && c.onGcs ? "1" : ""}
       title={`${c.provider}${label ? " · " + label : ""}`}
     >
+      <input type="checkbox" class="vpick" title="Selecionar" />
       <img src={candidateUrl(c, 200)} alt="" loading="lazy" />
       <span class="vprov">{c.provider}</span>
       {c.chosen ? <span class="vchosen" title="No ar">★</span> : null}
@@ -82,6 +83,7 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
           <button type="button" data-g="downloaded">Baixadas</button>
           <button type="button" data-g="gen">Geradas</button>
           <button type="button" data-g="upload">Enviadas</button>
+          <button type="button" class="vbulkdel" hidden>🗑 Apagar (<b class="vmarked">0</b>)</button>
         </div>
         <div class="vlist">
           <form class="add" method="post" action={`/studio/${g.id}/${face}/upload`} enctype="multipart/form-data">
@@ -127,13 +129,14 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
 export const renderFacePane = (g: Game, face: Face, history: Candidate[], opts: Opts): string =>
   "" + (<FacePane g={g} face={face} history={history} opts={opts} />);
 
-const Tile: FC<{ s: Studio; opts: Opts }> = ({ s, opts }) => {
-  const g = s.game;
+// One studio card. The tile links to /studio/<id>; the detail overlay is
+// rendered (open) only for the active game on that route.
+const Tile: FC<{ g: Game; opts: Opts; active?: Studio }> = ({ g, opts, active }) => {
   const ar = g.dimensions ? `${g.dimensions.widthCm}/${g.dimensions.heightCm}` : "3/4";
   return (
-    <section class="card" data-id={g.id} data-name={g.name.toLowerCase()} style={`--tint:${g.tint ?? "#3a3a44"}`}>
+    <section class={`card${active ? " open" : ""}`} data-id={g.id} data-name={g.name.toLowerCase()} style={`--tint:${g.tint ?? "#3a3a44"}`}>
       <input type="checkbox" class="pick" title="Selecionar" />
-      <button class="tile" type="button">
+      <a class="tile" href={`/studio/${g.id}`}>
         <span class="front" style={`aspect-ratio:${ar}`}>
           <img src={displayUrl(g.id, "front", 300)} alt="" loading="lazy" data-fb={coverFallback(g, 300) || undefined} onerror={fbChain(coverFallback(g, 300))} />
           <span class="nm">{g.name}</span>
@@ -142,36 +145,38 @@ const Tile: FC<{ s: Studio; opts: Opts }> = ({ s, opts }) => {
           <span class="snm">{g.name}</span>
           <img src={displayUrl(g.id, "spine", 240)} alt="" loading="lazy" data-fb={genSpineFallback(g.id)} onerror={fbChain(genSpineFallback(g.id))} />
         </span>
-      </button>
-      <div class="detail" data-id={g.id} data-face="front">
-        <div class="dhead">
-          <b>{g.name}</b>
-          <div class="facetabs">
-            <button type="button" data-f="front" class="on">Frente</button>
-            <button type="button" data-f="spine">Lombada</button>
+      </a>
+      {active ? (
+        <div class="detail open" data-id={g.id} data-face="front">
+          <div class="dhead">
+            <b>{g.name}</b>
+            <div class="facetabs">
+              <button type="button" data-f="front" class="on">Frente</button>
+              <button type="button" data-f="spine">Lombada</button>
+            </div>
+            <form method="post" action={`/studio/${g.id}/download`} class="dlform"><button type="submit" class="dlbtn" title="Rebaixar capas BGG/Ludopedia">⬇ Baixar capas</button></form>
+            <a class="close" href="/" title="Fechar">✕</a>
           </div>
-          <form method="post" action={`/studio/${g.id}/download`} class="dlform"><button type="submit" class="dlbtn" title="Rebaixar capas BGG/Ludopedia">⬇ Baixar capas</button></form>
-          <button type="button" class="close" title="Fechar">✕</button>
+          {opts.obsidian ? (
+            <details class="artnote">
+              <summary>✎ Nota de arte (Obsidian · aplica-se aos prompts)</summary>
+              <form method="post" action={`/studio/${g.id}/art-note`}>
+                <textarea name="text" class="prompt" rows={2} placeholder="direção de arte específica deste jogo…">{g.boxArtDescription ?? ""}</textarea>
+                <div class="genrow"><button type="submit" class="gengo">Salvar no Obsidian</button></div>
+              </form>
+            </details>
+          ) : null}
+          <div class="panes">
+            <FacePane g={g} face="front" history={active.front} opts={opts} />
+            <FacePane g={g} face="spine" history={active.spine} opts={opts} />
+          </div>
         </div>
-        {opts.obsidian ? (
-          <details class="artnote">
-            <summary>✎ Nota de arte (Obsidian · aplica-se aos prompts)</summary>
-            <form method="post" action={`/studio/${g.id}/art-note`}>
-              <textarea name="text" class="prompt" rows={2} placeholder="direção de arte específica deste jogo…">{g.boxArtDescription ?? ""}</textarea>
-              <div class="genrow"><button type="submit" class="gengo">Salvar no Obsidian</button></div>
-            </form>
-          </details>
-        ) : null}
-        <div class="panes">
-          <FacePane g={g} face="front" history={s.front} opts={opts} />
-          <FacePane g={g} face="spine" history={s.spine} opts={opts} />
-        </div>
-      </div>
+      ) : null}
     </section>
   );
 };
 
-export const studioPage = (items: Studio[], opts: Opts): string =>
+export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =>
   "<!doctype html>" +
   (
     <html lang="pt-BR">
@@ -226,7 +231,7 @@ export const studioPage = (items: Studio[], opts: Opts): string =>
         {opts.gcs ? (
           <dialog id="delDlg">
             <h3>Apagar imagem</h3>
-            <p class="hint">Esta cópia existe localmente e no GCS (☁). O que apagar?</p>
+            <p class="hint" id="delHint">Esta cópia existe localmente e no GCS (☁). O que apagar?</p>
             <div class="genrow">
               <button type="button" id="delCancel" class="gsclose">Cancelar</button>
               <button type="button" id="delLocal" class="btn">🗑 Só local</button>
@@ -234,7 +239,7 @@ export const studioPage = (items: Studio[], opts: Opts): string =>
             </div>
           </dialog>
         ) : null}
-        <main>{items.map((s) => <Tile s={s} opts={opts} />)}</main>
+        <main>{games.map((g) => <Tile g={g} opts={opts} active={active?.game.id === g.id ? active : undefined} />)}</main>
         <script dangerouslySetInnerHTML={{ __html: JS }} />
       </body>
     </html>
@@ -287,10 +292,10 @@ main{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;padding:20px}
 .tile .spine .snm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);color:#fff;font-weight:700;font-size:12px;text-shadow:0 1px 2px #000;padding:10px 0;text-align:center}
 /* per-view visibility */
 body[data-view=front] .tile .spine,body[data-view=spine] .tile .front{display:none}
-
-/* Detail overlay (opens on tile click) */
+/* Detail overlay: server-rendered open on /studio/<id> */
 .detail{display:none}
 .card.open .detail{display:flex;flex-direction:column;position:fixed;inset:0;z-index:50;background:#15151d;padding:0;overflow:hidden}
+.close{background:#2a2a38;color:#cfcfe0;border:0;border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:14px;display:grid;place-items:center;text-decoration:none}
 .dhead{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #2a2a38;background:#1c1c26;flex-wrap:wrap}
 .dhead b{font-size:16px}
 .facetabs{display:flex;gap:6px}
@@ -328,6 +333,12 @@ body[data-view=front] .tile .spine,body[data-view=spine] .tile .front{display:no
 .vrow .vchosen{position:absolute;top:3px;left:3px;font-size:10px;background:#2f9e59;color:#fff;border-radius:5px;padding:0 4px;line-height:15px}
 .vrow .vsaved{position:absolute;top:3px;right:3px;font-size:10px;color:#bcd;background:#0009;border-radius:5px;padding:0 3px}
 .vrow[hidden]{display:none}
+.vrow .vpick{position:absolute;top:4px;left:4px;z-index:3;width:18px;height:18px;margin:0;cursor:pointer;opacity:0;transition:opacity .12s}
+.vrow:hover .vpick,.vrow.marked .vpick{opacity:1}
+.vrow.marked{outline-color:#7a2f34}
+.srcfilter .vbulkdel{margin-left:auto;background:#7a2f34;color:#fff;border:0;border-radius:999px;padding:4px 10px;font-size:11px;cursor:pointer}
+.srcfilter .vbulkdel[hidden]{display:none}
+.srcfilter .vbulkdel b{font-weight:700}
 .empty{color:#55556e;font-size:12px;padding:8px 4px;grid-column:1/-1}
 
 /* stage: big preview + action toolbar on the selected version */
@@ -384,16 +395,14 @@ var sv=localStorage.getItem('studioView');if(sv){var t=document.querySelector('.
 var q=document.getElementById('q');q.oninput=function(){var v=q.value.toLowerCase();
   document.querySelectorAll('.card').forEach(function(c){c.style.display=c.dataset.name.indexOf(v)>=0?'':'none';});};
 
-// open/close detail (in select mode, a card click toggles its checkbox instead)
+// Tiles are links to /studio/<id>; in select mode a click toggles the
+// checkbox instead of navigating. Opening/closing is real navigation now.
 document.querySelectorAll('.card').forEach(function(card){
   var pick=card.querySelector('.pick');
-  card.querySelector('.tile').onclick=function(){
-    if(body.dataset.sel!==undefined){pick.checked=!pick.checked;pick.onchange();return;}
-    card.classList.add('open');
-    var det=card.querySelector('.detail');
-    initPane(det.querySelector('.fpane[data-face="'+det.dataset.face+'"]'));
-  };
-  card.querySelector('.close').onclick=function(){card.classList.remove('open');};
+  card.querySelector('.tile').addEventListener('click',function(e){
+    if(body.dataset.sel===undefined)return;
+    e.preventDefault();pick.checked=!pick.checked;pick.onchange();
+  });
   if(pick)pick.onchange=function(){card.classList.toggle('marked',pick.checked);bulkCount();};
 });
 
@@ -438,7 +447,23 @@ function bulkCount(){var el=document.getElementById('selCount');if(el)el.textCon
   };
   if(dl)dl.onclick=function(){runBulk('/bulk/download',{});};
 })();
-document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.card.open').forEach(function(c){c.classList.remove('open');});});
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape')return;
+  if(document.querySelector('dialog[open]'))return; // dialogs close themselves
+  if(document.querySelector('.card.open'))location.href='/';
+});
+// Delete/Backspace: delete the marked rows, else the selected row (not while typing).
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Delete'&&e.key!=='Backspace')return;
+  var t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
+  var det=document.querySelector('.card.open .detail');if(!det)return;
+  var pane=det.querySelector('.fpane[data-face="'+det.dataset.face+'"]');if(!pane)return;
+  var marked=[].slice.call(pane.querySelectorAll('.vrow.marked'));
+  if(marked.length){e.preventDefault();requestDeleteRows(pane,marked);return;}
+  var row=pane.querySelector('.vrow.sel');
+  if(row){e.preventDefault();requestDeleteRows(pane,[row]);}
+});
 
 // ---- keep every detail action IN-PLACE (no navigation, no reload) ----
 // The detail is a client overlay; a form POST used to 302 -> / and blow it away.
@@ -459,18 +484,63 @@ function refreshPane(det,id,face){
   });
 }
 
-// delete choice: a GCS-backed candidate (☁) can go local-only or local+GCS
-var delDlg=document.getElementById('delDlg'),delForm=null;
+// delete choice: a GCS-backed candidate (☁) can go local-only or local+GCS.
+// delForm = single-row form flow; delFn = bulk callback from multi-select.
+var delDlg=document.getElementById('delDlg'),delForm=null,delFn=null,DEL_HINT='';
+function setDelHint(t){if(delDlg)delDlg.querySelector('#delHint').textContent=t;}
 if(delDlg){
+  DEL_HINT=delDlg.querySelector('#delHint').textContent;
   var delGo=function(alsoGcs){
-    var f=delForm;delForm=null;delDlg.close();
+    var f=delForm,fn=delFn;delForm=null;delFn=null;delDlg.close();
+    if(fn)return fn(alsoGcs?'gcs':'');
     if(!f)return;
     if(alsoGcs){var i=document.createElement('input');i.type='hidden';i.name='also';i.value='gcs';f.appendChild(i);}
     f.dataset.confirmed='1';submitDetailForm(f);
   };
-  delDlg.querySelector('#delCancel').onclick=function(){delForm=null;delDlg.close();};
+  delDlg.querySelector('#delCancel').onclick=function(){delForm=null;delFn=null;delDlg.close();};
+  delDlg.addEventListener('close',function(){delForm=null;delFn=null;});
   delDlg.querySelector('#delLocal').onclick=function(){delGo(false);};
   delDlg.querySelector('#delBoth').onclick=function(){delGo(true);};
+}
+// bulk path: any picked row is GCS-backed -> offer local-only vs local+GCS
+function askDelScope(n,fn){
+  if(!delDlg)return fn('');
+  setDelHint(n+(n>1?' imagens':' imagem')+' existe'+(n>1?'m':'')+' localmente e no GCS (☁). O que apagar?');
+  delFn=fn;delDlg.showModal();
+}
+// delete the given rows of one face pane in a single request, then refresh it
+function requestDeleteRows(pane,rows,scope){
+  if(!rows.length)return;
+  var keys=[],anyGcs=false;
+  rows.forEach(function(r){
+    anyGcs=anyGcs||r.dataset.ongcs==='1';
+    keys.push({provider:r.dataset.provider,version:r.dataset.version,ext:r.dataset.ext,kind:r.dataset.kind});
+  });
+  var go=function(scp){
+    var fd=new FormData();fd.set('keys',JSON.stringify(keys));if(scp)fd.set('also',scp);
+    fetch('/studio/'+pane.dataset.id+'/'+pane.dataset.face+'/delete-many',{method:'POST',body:fd})
+      .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});return r.json();})
+      .then(function(d){if(d.errors&&d.errors.length)alert('apagado(s) '+d.deleted+', erro(s): '+d.errors.length);})
+      .then(function(){return refreshPane(pane.closest('.detail'),pane.dataset.id,pane.dataset.face);})
+      .catch(function(e){alert('falhou: '+e.message);});
+  };
+  if(scope!==undefined)return go(scope);
+  if(!skipDeleteConfirm()){
+    if(anyGcs)return askDelScope(rows.length,go);
+    if(!confirm('Apagar '+rows.length+' imagem'+(rows.length>1?'ns':'')+'?'))return;
+  }
+  go('');
+}
+function vdelCount(pane){
+  var btn=pane.querySelector('.vbulkdel');if(!btn)return;
+  var n=pane.querySelectorAll('.vrow.marked').length;
+  btn.hidden=!n;
+  var b=btn.querySelector('.vmarked');if(b)b.textContent=n;
+}
+function toggleMark(pane,row,on){
+  row.classList.toggle('marked',on);
+  var pk=row.querySelector('.vpick');if(pk)pk.checked=on;
+  vdelCount(pane);
 }
 function submitDetailForm(form){
   var act=form.getAttribute('action')||'';
@@ -480,7 +550,7 @@ function submitDetailForm(form){
   if((isDel||isGdel)&&!skipDeleteConfirm()&&!form.dataset.confirmed){
     var row=pane?pane.querySelector('.vrow.sel'):null;
     // GCS-backed pick: offer local-only vs local+GCS instead of a plain confirm
-    if(isDel&&row&&row.dataset.ongcs==='1'){delForm=form;delDlg.showModal();return;}
+    if(isDel&&row&&row.dataset.ongcs==='1'){setDelHint(DEL_HINT);delForm=form;delDlg.showModal();return;}
     if(!confirm(isGdel?'Remover do GCS? (mantém a cópia local)':'Apagar esta imagem?'))return;
   }
   if(form.dataset.confirmed)delete form.dataset.confirmed;
@@ -533,10 +603,17 @@ function selectRow(pane,row){
 
 function initPane(pane){
   if(!pane||pane.dataset.init)return;pane.dataset.init='1';
-  // rows -> selection
-  pane.querySelectorAll('.vrow').forEach(function(r){r.addEventListener('click',function(){selectRow(pane,r);});});
+  // rows -> selection (click) or mark for bulk delete (ctrl/cmd/shift-click)
+  pane.querySelectorAll('.vrow').forEach(function(r){r.addEventListener('click',function(e){
+    if(e.target.closest('.vpick'))return;
+    if(e.shiftKey||e.metaKey||e.ctrlKey)return toggleMark(pane,r,!r.classList.contains('marked'));
+    selectRow(pane,r);
+  });});
+  pane.querySelectorAll('.vpick').forEach(function(pk){pk.addEventListener('change',function(){toggleMark(pane,pk.closest('.vrow'),pk.checked);});});
+  var vdel=pane.querySelector('.vbulkdel');
+  if(vdel)vdel.onclick=function(){requestDeleteRows(pane,[].slice.call(pane.querySelectorAll('.vrow.marked')));};
   // source filter
-  pane.querySelectorAll('.srcfilter button').forEach(function(b){
+  pane.querySelectorAll('.srcfilter button[data-g]').forEach(function(b){
     b.onclick=function(){
       pane.querySelectorAll('.srcfilter button').forEach(function(x){x.classList.remove('on')});
       b.classList.add('on');var g=b.dataset.g;
@@ -555,4 +632,8 @@ function initPane(pane){
   // default selection: the promoted version, else the first
   selectRow(pane,pane.querySelector('.vrow.chosen')||pane.querySelector('.vrow'));
 }
+// Direct load of /studio/<id>: init the open detail's active pane.
+document.querySelectorAll('.card.open .detail').forEach(function(det){
+  initPane(det.querySelector('.fpane[data-face="'+det.dataset.face+'"]'));
+});
 `;

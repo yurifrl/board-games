@@ -137,8 +137,8 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
   const colon = g.name.indexOf(":");
   return (
     <a
-      class={`box${size ? " sized" : ""}${grp.expansions.length ? " has-expansions" : ""}`}
-      href={`#g-${g.slug}`}
+      class={`box${size ? " sized" : ""}${grp.expansions.length ? " has-expansions" : ""}${g.partedDate ? " parted" : ""}`}
+      href={`/show/${g.slug}`}
       style={`--tint:${tint}${sizeStyle}`}
       data-id={g.id}
       data-search={search}
@@ -169,6 +169,7 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
         <span class="face top"></span>
       </span>
       {g.forSale && canSeeSale(perm) ? <span class="tsale">VENDA</span> : null}
+      {g.partedDate ? <span class="bye" title="Fora da coleção">👋</span> : null}
       <span class="box-labels">
         <span class="box-name">
           {colon === -1 ? g.name : <>{g.name.slice(0, colon + 1)}<br />{g.name.slice(colon + 1).trimStart()}</>}
@@ -188,32 +189,33 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
   );
 };
 
-// Full-screen game hub, shown via :target when its box is tapped. Cover top-left,
+// Full-screen game hub, served at /show/<slug> when its box or spine is tapped.
 // One shelved spine (spine view). The tinted strip with the vertical name is the
 // default; the generated spine art covers it when present. Links to the same detail.
 const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
   const g = grp.base;
   return (
-    <a class="spine" href={`#g-${g.slug}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
+    <a class={`spine${g.partedDate ? " parted" : ""}`} href={`/show/${g.slug}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
       <span class="spine-name">{g.name}</span>
       <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" data-fb={genSpine(g.id)} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" />
+      {g.partedDate ? <span class="bye" title="Fora da coleção">👋</span> : null}
     </a>
   );
 };
 
-// Full-screen game hub, shown via :target when its box is tapped. Cover top-left,
+// Full-screen game hub, rendered open at /show/<slug>. Cover top-left,
 // then real data only: overview (facts/price/expansions) and your vault notes.
-const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string }> = ({ grp, perm, whatsapp }) => {
+const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string; open?: boolean }> = ({ grp, perm, whatsapp, open }) => {
   const g = grp.base;
   const tint = g.tint ?? "#3a3a44";
   const bg = coverFallback(g);
   const showSale = canSeeSale(perm) && (!!g.salePrice || !!g.price);
   return (
-    <div class="detail" id={`g-${g.slug}`} style={`--tint:${tint}`}>
-      <a class="detail-bg" href="#" aria-label="Fechar" style={bg ? `background-image:url("${bg}")` : ""}></a>
+    <div class={`detail${open ? " open" : ""}`} style={`--tint:${tint}`}>
+      <a class="detail-bg" href="/" aria-label="Fechar" style={bg ? `background-image:url("${bg}")` : ""}></a>
       <div class="hub">
         <div class="hub-inner">
-          <a class="close" href="#" aria-label="Fechar">✕</a>
+          <a class="close" href="/" aria-label="Fechar">✕</a>
           <div class="hub-head">
             <div class="hub-cover">
               <CoverImg g={g} cls="cover" ar={g.dimensions ? `${g.dimensions.widthCm}/${g.dimensions.heightCm}` : undefined} />
@@ -481,7 +483,7 @@ const CollectionTools: FC<{ groups: GameGroup[]; canFilterSale: boolean }> = ({ 
           <FilterChoice id="game-played" label="Jogado" options={[{ value: "", label: "Qualquer" }, { value: "yes", label: "Jogado" }, { value: "no", label: "Não jogado" }, { value: "unknown", label: "Não informado" }]} />
           {languages.length ? <FilterChoice id="game-language" label="Idioma" options={[{ value: "", label: "Todos" }, ...languages.map((language) => ({ value: language.toLowerCase(), label: language }))]} /> : null}
           {canFilterSale ? <FilterChoice id="game-sale" label="Disponibilidade" options={[{ value: "", label: "Todos" }, { value: "yes", label: "À venda" }]} /> : null}
-          <FilterChoice id="game-parted" label="Coleção" options={[{ value: "", label: "Na coleção" }, { value: "all", label: "Todos" }, { value: "parted", label: "Fora da coleção" }]} />
+          <FilterChoice id="game-parted" label="Coleção" options={[{ value: "", label: "Todos" }, { value: "keep", label: "Na coleção" }, { value: "parted", label: "Fora da coleção" }]} />
           </div>
         </div>
       </div>
@@ -509,11 +511,13 @@ export function collectionPage(opts: {
   mineSlots: Set<string>;
   login?: { error?: string };
   view?: "shelf" | "spine";
+  /** Game whose hub is rendered open (the /show/<slug> route); omitted on the bare collection. */
+  active?: GameGroup;
   /** Promotion epochs (displays.json) for cache-busted display URLs. */
   displayVersions?: Record<string, number>;
 }): string {
   displayVersions = opts.displayVersions ?? {};
-  const { groups, perm, email, whatsapp, roles, defaultRole, isAuthed, slots, mineSlots, login, view } = opts;
+  const { groups, perm, email, whatsapp, roles, defaultRole, isAuthed, slots, mineSlots, login, view, active } = opts;
   const isTemp = perm.roles.length > 0 && !perm.admin && !perm.name;
   const showLogin = !!login;
   const sized = groups.flatMap(({ base }) => base.dimensions ? [base.dimensions] : []);
@@ -558,7 +562,7 @@ export function collectionPage(opts: {
       <div class="shelf" style={shelfStyle}>{groups.map((grp) => <Box grp={grp} perm={perm} />)}</div>
       <div class="spines">{groups.map((grp) => <Spine grp={grp} />)}</div>
       <div id="filter-empty" class="filter-empty" hidden><b>Nenhum jogo encontrado</b><span>Tente limpar um filtro ou buscar outra coisa.</span></div>
-      {groups.map((grp) => <Detail grp={grp} perm={perm} whatsapp={whatsapp} />)}
+      {active ? <Detail grp={active} perm={perm} whatsapp={whatsapp} open /> : null}
       {perm.admin ? <InviteForm roles={roles} defaultRole={defaultRole} /> : null}
       {!isAuthed && !showLogin ? (
         <a href="/login" class="lock" title="Entrar" aria-label="Entrar">🔒</a>
@@ -593,7 +597,7 @@ export function collectionPage(opts: {
             function matchesPlayers(d,value){if(!value)return true;var max=Number(d.playersMax);if(value.endsWith('+'))return max>=Number(value.slice(0,-1));var n=Number(value);return Number(d.playersMin)<=n&&max>=n;}
             function matchesComplexity(value,range){var n=Number(value);if(!range)return true;if(!n)return false;if(range==='2')return n<=2;if(range==='3')return n>2&&n<=3;if(range==='4')return n>3&&n<=4;return n>4;}
             function getValues(){var values={};Object.keys(controls).forEach(function(k){var c=controls[k],input=c&&c.matches('fieldset')?c.querySelector('input:checked'):c;values[k]=input?input.value.trim().toLowerCase():'';});return values;}
-            function matchesBox(b,values){var d=b.dataset;return(!values.search||d.search.includes(values.search))&&includes(d.type,values.type)&&includes(d.category,values.category)&&includes(d.providerCategory,values.providerCategory)&&includes(d.mechanic,values.mechanic)&&includes(d.designer,values.designer)&&includes(d.publisher,values.publisher)&&includes(d.languageDependency,values.languageDependency)&&(!values.played||d.played===values.played)&&includes(d.language,values.language)&&(!values.sale||d.sale===values.sale)&&(values.parted==='all'||(values.parted==='parted'?d.parted==='yes':d.parted!=='yes'))&&matchesTime(d.playtime,values.playtime)&&matchesPlayers(d,values.players)&&matchesComplexity(d.complexity,values.complexity)&&(!values.rating||Number(d.rating)>=Number(values.rating))&&(!values.year||d.year===values.year);}
+            function matchesBox(b,values){var d=b.dataset;return(!values.search||d.search.includes(values.search))&&includes(d.type,values.type)&&includes(d.category,values.category)&&includes(d.providerCategory,values.providerCategory)&&includes(d.mechanic,values.mechanic)&&includes(d.designer,values.designer)&&includes(d.publisher,values.publisher)&&includes(d.languageDependency,values.languageDependency)&&(!values.played||d.played===values.played)&&includes(d.language,values.language)&&(!values.sale||d.sale===values.sale)&&(values.parted==='parted'?d.parted==='yes':values.parted==='keep'?d.parted!=='yes':true)&&matchesTime(d.playtime,values.playtime)&&matchesPlayers(d,values.players)&&matchesComplexity(d.complexity,values.complexity)&&(!values.rating||Number(d.rating)>=Number(values.rating))&&(!values.year||d.year===values.year);}
             function updateFacets(values){Object.keys(controls).forEach(function(k){var control=controls[k];if(!control||!control.matches('fieldset'))return;control.querySelectorAll('.choice-options input').forEach(function(radio){var candidate=Object.assign({},values);candidate[k]=radio.value.toLowerCase();var total=boxes.filter(function(b){return matchesBox(b,candidate);}).length;radio.disabled=total===0&&!radio.checked;var label=radio.nextElementSibling;label.textContent=label.dataset.filterLabel+' ('+total+')';});});}
             function applyFilters(){
               var values=getValues(),sortValue=sort.querySelector('input:checked').value,visible=boxes.filter(function(b){var show=matchesBox(b,values);b.hidden=!show;var s=spineOf(b);if(s)s.hidden=!show;return show;});
