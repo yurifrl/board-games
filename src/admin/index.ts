@@ -166,7 +166,7 @@ const keyFromForm = async (c: { req: { parseBody: () => Promise<Record<string, u
 app.post("/studio/:id/:face/promote", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
-  await promote(service, r.key, r.face);
+  await promote(service, r.key, r.face, DATA_DIR);
   return c.json({ ok: true });
 });
 

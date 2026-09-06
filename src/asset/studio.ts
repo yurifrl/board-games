@@ -20,6 +20,8 @@ import type { AssetKey } from "./key.ts";
 import { keyPath } from "./key.ts";
 import type { AssetService } from "./service.ts";
 import type { AssetBlob } from "./types.ts";
+import { readFile } from "node:fs/promises";
+import { writeJsonAtomic } from "../store.ts";
 
 export type Provider = "upload" | "openai" | "google" | "ludopedia" | "bgg";
 
@@ -108,11 +110,48 @@ export async function addCandidate(
  * always addressed as `.png` so the Obsidian/app URL never changes; the real
  * content-type rides along in the stored blob and is what the serve route
  * sends. */
-export async function promote(service: AssetService, candidate: AssetKey, face: Face): Promise<AssetKey> {
+export async function promote(service: AssetService, candidate: AssetKey, face: Face, dataDir?: string): Promise<AssetKey> {
   const blob = await service.render(candidate, new URLSearchParams());
   if (!blob) throw new Error(`candidate not found: ${candidate.entity}/${candidate.kind}/${candidate.source}/${candidate.variant}`);
   const dest = displayKey(candidate.entity, face);
   // Record the source candidate so the admin can badge the promoted version.
   await service.put(dest, { ...blob, fingerprint: `chosen:${keyPath(candidate)}` });
+  // Cache-busting marker: the display URL is permanent (`.png`, signed, no
+  // expiry), so promotions bump `<entity>/<face>` -> epoch-ms in displays.json.
+  // The app embeds it as `&v=` to defeat browser/CDN caching (see views.tsx).
+  if (dataDir) await notePromotion(dataDir, candidate.entity, face);
   return dest;
+}
+
+/** `<entity>/<face>` -> promotion epoch-ms, persisted so the public app (a
+ * separate process on the same volume) can version display URLs. */
+export type DisplayVersions = Record<string, number>;
+
+const DISPLAYS_FILE = "displays.json";
+
+async function readDisplays(dataDir: string): Promise<DisplayVersions> {
+  try {
+    return JSON.parse(await readFile(`${dataDir}/${DISPLAYS_FILE}`, "utf8")) as DisplayVersions;
+  } catch {
+    return {};
+  }
+}
+
+/** Record a promotion epoch for a game+face. */
+export async function notePromotion(dataDir: string, entity: string, face: Face): Promise<void> {
+  const map = await readDisplays(dataDir);
+  map[`${entity}/${face}`] = Date.now();
+  await writeJsonAtomic(`${dataDir}/${DISPLAYS_FILE}`, map);
+}
+
+/** Promoted-version map with a small TTL cache — mirrors loadGames(): the file
+ * only changes on promotion, so a stale window of seconds is fine. */
+const TTL_MS = 30_000;
+let displaysCache: { at: number; map: DisplayVersions } | null = null;
+
+export async function displayVersions(dataDir: string): Promise<DisplayVersions> {
+  if (displaysCache && Date.now() - displaysCache.at < TTL_MS) return displaysCache.map;
+  const map = await readDisplays(dataDir);
+  displaysCache = { at: Date.now(), map };
+  return map;
 }

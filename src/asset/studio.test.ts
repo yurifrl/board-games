@@ -1,4 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, test, setSystemTime } from "bun:test";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AssetService } from "./service.ts";
 import { InMemoryBlobStore } from "./store/memory.ts";
 import { buildRenderers } from "./render/registry.ts";
@@ -34,6 +37,19 @@ test("upload → history → promote copies bytes to the stable display slot", a
   // history untouched by promote
   expect((await history(service, "clank", "front")).length).toBe(2);
   void k1;
+});
+
+test("promote records a displays.json version marker when given a dataDir", async () => {
+  const { service } = svc();
+  const dir = await mkdtemp(join(tmpdir(), "studio-"));
+  const k = await addCandidate(service, "clank", "spine", "upload", blob(5), "png");
+
+  setSystemTime(1000);
+  await promote(service, k, "spine", dir);
+  setSystemTime(2000);
+  await promote(service, k, "spine", dir);
+  const map = JSON.parse(await readFile(join(dir, "displays.json"), "utf8"));
+  expect(map["clank/spine"]).toBe(2000);
 });
 
 test("addCandidate is disk-only; save pushes to GCS; removes are tier-scoped", async () => {

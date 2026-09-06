@@ -21,6 +21,7 @@ import {
 } from "./auth.ts";
 import { getTmpUser, upsertTmpUser } from "./tmpusers.ts";
 import { collectionPage, invitePage, slotPage, requestSentPage, membersAdminPage, pendingPage, deniedPage, bookingPage, noticePage } from "./views.tsx";
+import { displayVersions } from "./asset/studio.ts";
 import { upcomingSessions, openBlocks, getSlotView } from "./slots.ts";
 import { bookGame, joinSession, leaveSession, syncCalendar } from "./calendar.ts";
 import { request as requestAccess, approve as approveAccess, deny as denyAccess, getRequest, listRequests, normPhone } from "./access.ts";
@@ -114,6 +115,7 @@ async function renderHome(c: Context, login?: { error?: string }, status = 200, 
     ? new Set(slots.filter((s) => s.players.includes(perm.email.toLowerCase())).map((s) => s.id))
     : new Set<string>();
   const html = collectionPage({
+    displayVersions: await displayVersions(DATA_DIR),
     groups,
     totalGames: games.length,
     forSaleCount: games.filter((g) => g.forSale).length,

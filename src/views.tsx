@@ -10,10 +10,17 @@ import { displayKey } from "./asset/studio.ts";
 import { ProviderPane } from "./provider-view.tsx";
 import { renderNote } from "./note-render.ts";
 
+/** Promotion epochs for the current render (set by collectionPage; render is
+ * synchronous, so one module-level map is safe). */
+let displayVersions: Record<string, number> = {};
+
 // Chosen (promoted) image slot the app renders — a stable `.png` URL per game+face.
-export function signedDisplay(entity: string, face: "front" | "spine", w?: number, h?: number): string {
+// `v` (promotion epoch from displays.json) is appended UNSIGNED — verifySigned
+// covers only path+w+h; v exists purely to bust browser/CDN caches (24h
+// max-age) when a promotion replaces the bytes at the same URL.
+export function signedDisplay(entity: string, face: "front" | "spine", w?: number, h?: number, v?: number): string {
   const key = displayKey(entity, face);
-  return `/asset/${entity}/display/${face}/latest.png?${sign(key, { w, h })}`;
+  return `/asset/${entity}/display/${face}/latest.png?${sign(key, { w, h })}${v ? `&v=${v}` : ""}`;
 }
 
 // Auto cover from a pull provider — the fallback shown until a pick is promoted.
@@ -24,7 +31,7 @@ export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400
 
 // Spine: prefer the promoted display/spine, else the old generated spine face.
 export function signedSpine(entity: string): string {
-  return signedDisplay(entity, "spine", 208, 628);
+  return signedDisplay(entity, "spine", 208, 628, displayVersions[`${entity}/spine`]);
 }
 function genSpine(entity: string): string {
   const key = boxArtKey(entity, "spine");
@@ -32,7 +39,7 @@ function genSpine(entity: string): string {
 }
 
 const coverProvider = (g: Game): "bgg" | "ludopedia" | null => (g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null);
-const coverSrc = (g: Game, w = 400, h?: number): string => signedDisplay(g.id, "front", w, h);
+const coverSrc = (g: Game, w = 400, h?: number): string => signedDisplay(g.id, "front", w, h, displayVersions[`${g.id}/front`]);
 const coverFallback = (g: Game, w = 400, h?: number): string => {
   const s = coverProvider(g);
   return s ? signedCover(g.id, s, w, h) : g.image ?? "";
@@ -502,7 +509,10 @@ export function collectionPage(opts: {
   mineSlots: Set<string>;
   login?: { error?: string };
   view?: "shelf" | "spine";
+  /** Promotion epochs (displays.json) for cache-busted display URLs. */
+  displayVersions?: Record<string, number>;
 }): string {
+  displayVersions = opts.displayVersions ?? {};
   const { groups, perm, email, whatsapp, roles, defaultRole, isAuthed, slots, mineSlots, login, view } = opts;
   const isTemp = perm.roles.length > 0 && !perm.admin && !perm.name;
   const showLogin = !!login;
