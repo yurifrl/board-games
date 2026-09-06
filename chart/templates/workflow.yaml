@@ -70,24 +70,6 @@ spec:
           {{- end }}
         resources: {{ toYaml .Values.resources | nindent 10 }}
 ---
-# Periodic catalog sync every 5 minutes, independent of the obsidian trigger.
-# concurrencyPolicy + the WorkflowTemplate mutex keep it serialized against
-# sensor-triggered runs.
-apiVersion: argoproj.io/v1alpha1
-kind: CronWorkflow
-metadata:
-  name: {{ $fullname }}-sync-cron
-  annotations:
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-spec:
-  schedules:
-    - "*/5 * * * *"
-  concurrencyPolicy: Forbid
-  startingDeadlineSeconds: 60
-  workflowSpec:
-    workflowTemplateRef:
-      name: board-games-sync
----
 apiVersion: argoproj.io/v1alpha1
 kind: EventBus
 metadata:
@@ -99,8 +81,7 @@ spec:
     version: latest
     replicas: 3
 ---
-# Watches the obsidian namespace for any vault-sync Workflow that Succeeded.
-# Whether the change concerns us is decided by the Sensor below, not here.
+# Forwards every Succeeded vault-sync; board-games reacts to each one.
 apiVersion: argoproj.io/v1alpha1
 kind: EventSource
 metadata:
@@ -137,15 +118,13 @@ spec:
     - name: obsidian-synced
       eventSourceName: {{ $fullname }}-obsidian-watch
       eventName: obsidian-sync
-      # Only fire when the sync's changed-files annotation touches our folder.
-      # This is where board-games owns the run/skip decision.
-      filters:
-        data:
-          - path: body.metadata.annotations.changed-files
-            type: string
-            comparator: "="
-            value:
-              - {{ .Values.worker.inventoryFolder | quote }}
+      # Contract: every Succeeded vault-sync triggers us. The sync's
+      # changed-files annotation is a semicolon-joined FILE list (empty diff
+      # -> ";"), not a folder path, so exact-matching the inventory folder can
+      # never fire. Syncing on every vault-sync is safe: the worker is
+      # idempotent, mutex-serialized, and content-gated (sha256 backup +
+      # fingerprint-deduped assets), and the source EventSource already
+      # filters to Succeeded only.
   triggers:
     - template:
         name: submit-board-games-sync
@@ -161,7 +140,6 @@ spec:
                 workflowTemplateRef:
                   name: board-games-sync
 ---
-# ── RBAC ─────────────────────────────────────────────────────────────────────
 # EventSource: cross-namespace watch of obsidian Workflows (cluster-scoped read).
 apiVersion: v1
 kind: ServiceAccount
