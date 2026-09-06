@@ -57,6 +57,9 @@ secretName: board-games
 # GCS. Empty = disabled: the app serves the legacy /covers FS cache and the
 # worker skips GCS (so local dev and non-GCS deploys work unchanged).
 # The URL signing secret reuses AUTH_SECRET from `secretName`.
+# The worker also mirrors catalog.json + users.json to `_backup/<file>` in this
+# bucket (sha256-gated) and restores from it on a fresh/empty volume — last-good
+# data survives even while Obsidian is down. BACKUP_GCS_BUCKET overrides.
 assetsGcsBucket: ""
 gcsSecretName: board-games-gcs-creds
 

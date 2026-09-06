@@ -18,6 +18,7 @@ import { parseGameNote, parseUsersNote } from "./parse.ts";
 import { enrichProviderData } from "./provider-data.ts";
 import { syncCalendar } from "../calendar.ts";
 import { writeCatalog, writeUsers, type UsersFile } from "../store.ts";
+import { backupStoreFiles, openBackupBucket, restoreMissingFiles } from "../backup.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 
@@ -27,6 +28,9 @@ const DATA_DIR = env("DATA_DIR", "./data");
 const SYNC_INTERVAL_MS = Number(env("SYNC_INTERVAL_MS", "300000"));
 const SYNC_ONCE = env("SYNC_ONCE") === "1";
 const FORCE_RESYNC = env("RESYNC_COVERS") === "1";
+
+/** The Obsidian-derived state mirrored to GCS under `_backup/` (see src/backup.ts). */
+const STORE_BACKUP_FILES = ["catalog.json", "users.json"];
 
 const slugOf = (url?: string) => url?.match(/jogo\/([^/?#]+)/)?.[1]?.toLowerCase();
 
@@ -121,7 +125,13 @@ async function cycle(): Promise<void> {
 
   // Catalog feeds assets/tint/slots. Each step is isolated so one failure
   // (e.g. Obsidian down) doesn't block the others.
+  // Restore FIRST: a fresh/lost volume is repopulated from the last-good GCS
+  // backup before any sync attempt, so a fully-down Obsidian still leaves the
+  // site serving last-good data instead of an empty catalog.
   let games: Game[] = [];
+  await step("restore", async () => {
+    await restoreMissingFiles(openBackupBucket(), DATA_DIR, STORE_BACKUP_FILES);
+  });
   await step("catalog", async () => {
     games = await syncCatalog();
     console.log(`  catalog: ${games.length} games`);
@@ -142,6 +152,9 @@ async function cycle(): Promise<void> {
   }
   // Slots come from the calendar, not Obsidian — sync even if catalog failed.
   await step("slots", () => syncSlots());
+  // Backup LAST: only meaningful after a successful catalog-write above —
+  // never overwrite last-good with a cycle that produced nothing.
+  await step("backup", () => backupStoreFiles(openBackupBucket(), DATA_DIR, STORE_BACKUP_FILES));
   console.log(`[${new Date().toISOString()}] sync done`);
 }
 

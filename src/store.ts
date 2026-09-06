@@ -10,6 +10,9 @@
  *   <root>/assets/          asset cache (covers + rulebooks), see src/asset/
  *
  * All of it lives under one path so a single mounted volume persists everything.
+ * catalog.json + users.json are additionally mirrored to `_backup/` in the
+ * assets GCS bucket (sha256-gated) and restored from it when the volume is
+ * fresh/empty — see src/backup.ts.
  */
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
