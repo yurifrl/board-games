@@ -3,7 +3,7 @@ import type { FC } from "hono/jsx";
 import type { Game } from "../games.ts";
 import type { Face } from "../asset/box-contract.ts";
 import type { Candidate } from "../asset/studio.ts";
-import { displayKey } from "../asset/studio.ts";
+import { displayKey, isManaged } from "../asset/studio.ts";
 import { boxArtKey } from "../asset/box-contract.ts";
 import { sign } from "../asset/auth.ts";
 
@@ -13,8 +13,10 @@ export type Opts = { gcs: boolean; providers: GenProvider[]; obsidian: boolean }
 const PROVIDER_LABEL: Record<GenProvider, string> = { openai: "OpenAI", google: "Gemini" };
 
 // Which source group a provider belongs to (drives the section toggle).
-const groupOf = (provider: string): "downloaded" | "gen" | "upload" =>
-  provider === "bgg" || provider === "ludopedia" ? "downloaded" : provider === "upload" ? "upload" : "gen";
+// Downloaded covers group PER SOURCE (bgg / ludopedia), not as one bucket —
+// the filter tabs name each source so auto-managed art is obvious.
+const groupOf = (provider: string): string =>
+  isManaged(provider) ? provider : provider === "upload" ? "upload" : "gen";
 
 const candidateUrl = (c: Candidate, w: number): string =>
   `/asset/${c.key.entity}/${c.key.kind}/${c.key.source}/${c.key.variant}.${c.key.ext}?${sign(c.key, { w })}`;
@@ -40,9 +42,10 @@ const fbChain = (fb: string) =>
     ? "if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.style.visibility='hidden'}"
     : "this.style.visibility='hidden'";
 
-const VRow: FC<{ c: Candidate; gcs: boolean }> = ({ c, gcs }) => {
+const VRow: FC<{ c: Candidate; gcs: boolean; mixed: boolean }> = ({ c, gcs, mixed }) => {
   const when = new Date(Number(c.version) || 0);
   const label = when.getTime() ? when.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "";
+  const prov = `${c.managed ? "⇣ " : ""}${c.provider}${mixed ? " · " + c.ext.toUpperCase() : ""}`;
   return (
     <button
       type="button"
@@ -53,13 +56,13 @@ const VRow: FC<{ c: Candidate; gcs: boolean }> = ({ c, gcs }) => {
       data-version={c.version}
       data-ext={c.ext}
       data-kind={c.key.kind}
-      data-ongcs={gcs && c.onGcs ? "1" : ""}
-      title={`${c.provider}${label ? " · " + label : ""}`}
+      data-ongcs={c.onGcs ? "1" : ""}
+      data-managed={c.managed ? "1" : ""}
+      title={`${prov}${label ? " · " + label : ""}${c.managed ? " · baixada automaticamente (sync) — não pode ser apagada" : ""}`}
     >
-      <input type="checkbox" class="vpick" title="Selecionar" />
+      <input type="checkbox" class="vpick" title="Selecionar" disabled={c.managed} />
       <img src={candidateUrl(c, 200)} alt="" loading="lazy" />
-      <span class="vprov">{c.provider}</span>
-      {c.chosen ? <span class="vchosen" title="No ar">★</span> : null}
+      <span class="vprov">{prov}</span>
       {gcs && c.onGcs ? <span class="vsaved" title="salva no GCS">☁</span> : null}
     </button>
   );
@@ -67,6 +70,10 @@ const VRow: FC<{ c: Candidate; gcs: boolean }> = ({ c, gcs }) => {
 
 const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = ({ g, face, history, opts }) => {
   const fb = face === "front" ? coverFallback(g, 900) : genSpineFallback(g.id);
+  // Downloaded sources present in THIS pane get their own tab (bgg, ludopedia),
+  // instead of one merged "Baixadas" — matches how the rows are grouped.
+  const srcs = [...new Set(history.filter((c) => isManaged(c.provider)).map((c) => c.provider))];
+  const mixed = new Set(history.map((c) => c.ext)).size > 1;
   const hidden = (
     <>
       <input type="hidden" name="provider" value="" />
@@ -80,7 +87,7 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
       <div class="rail">
         <div class="srcfilter">
           <button type="button" data-g="all" class="on">Todas <b>{history.length}</b></button>
-          <button type="button" data-g="downloaded">Baixadas</button>
+          {srcs.map((s) => <button type="button" data-g={s}>{s} <b>{history.filter((c) => c.provider === s).length}</b></button>)}
           <button type="button" data-g="gen">Geradas</button>
           <button type="button" data-g="upload">Enviadas</button>
           <button type="button" class="vbulkdel" hidden>🗑 Apagar (<b class="vmarked">0</b>)</button>
@@ -89,7 +96,7 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
           <form class="add" method="post" action={`/studio/${g.id}/${face}/upload`} enctype="multipart/form-data">
             <label title="Enviar imagem do computador">＋<input type="file" name="file" accept="image/*" onchange="this.form.requestSubmit()" /></label>
           </form>
-          {history.map((c) => <VRow c={c} gcs={opts.gcs} />)}
+          {history.map((c) => <VRow c={c} gcs={opts.gcs} mixed={mixed} />)}
           {history.length === 0 ? <div class="empty">sem histórico ainda</div> : null}
         </div>
       </div>
@@ -98,10 +105,12 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
           <img src={displayUrl(g.id, face, 900)} alt="" data-fb={fb || undefined} onerror={fbChain(fb)} />
         </div>
         <div class="actbar" hidden>
+          <span class="selmeta"></span>
           <form method="post" action={`/studio/${g.id}/${face}/promote`}>{hidden}<button class="btn primary" title="Tornar esta a imagem exibida">★ Promover</button></form>
           <form method="post" action={`/studio/${g.id}/${face}/save`} class="act-save">{hidden}<button class="btn">☁ Salvar no GCS</button></form>
           <form method="post" action={`/studio/${g.id}/${face}/gcs-delete`} class="act-gdel">{hidden}<button class="btn warn">☁ Remover do GCS</button></form>
-          <form method="post" action={`/studio/${g.id}/${face}/delete`}>{hidden}<button class="btn danger">🗑 Apagar</button></form>
+          <form method="post" action={`/studio/${g.id}/${face}/delete`} class="act-del">{hidden}<button class="btn danger">🗑 Apagar</button></form>
+          <span class="managednote" hidden>⇣ baixada automaticamente (sync) — não pode ser apagada; use ⬇ Baixar capas para atualizar</span>
         </div>
       </div>
       {opts.providers.length > 0 ? (
@@ -338,9 +347,10 @@ body[data-view=front] .tile .spine,body[data-view=spine] .tile .front{display:no
 .vrow.marked{outline-color:#7a2f34}
 .srcfilter .vbulkdel{margin-left:auto;background:#7a2f34;color:#fff;border:0;border-radius:999px;padding:4px 10px;font-size:11px;cursor:pointer}
 .srcfilter .vbulkdel[hidden]{display:none}
-.srcfilter .vbulkdel b{font-weight:700}
-.empty{color:#55556e;font-size:12px;padding:8px 4px;grid-column:1/-1}
-
+.actbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.actbar .selmeta{width:100%;text-align:center;color:#8a8a9a;font-size:12px}
+.actbar .managednote{width:100%;text-align:center;color:#c9a227;font-size:12px}
+.actbar form{margin:0}
 /* stage: big preview + action toolbar on the selected version */
 .stage{display:flex;flex-direction:column;min-height:0;padding:16px;gap:12px}
 .preview{flex:1;min-height:0;border-radius:12px;background:#0f0f16;border:1px solid #2a2a38;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -508,9 +518,14 @@ function askDelScope(n,fn){
   setDelHint(n+(n>1?' imagens':' imagem')+' existe'+(n>1?'m':'')+' localmente e no GCS (☁). O que apagar?');
   delFn=fn;delDlg.showModal();
 }
-// delete the given rows of one face pane in a single request, then refresh it
+// delete the given rows of one face pane in a single request, then refresh it.
+// Managed rows (⇣ auto-downloaded) are skipped: the sync re-pulls them, so
+// deleting is a no-op — the server refuses them too.
 function requestDeleteRows(pane,rows,scope){
   if(!rows.length)return;
+  var locked=rows.filter(function(r){return r.dataset.managed==='1';});
+  rows=rows.filter(function(r){return r.dataset.managed!=='1';});
+  if(!rows.length){alert(locked.length+' imagem(ens) autom\u00e1tica(s) \u2014 s\u00e3o re-baixadas pelo sync e n\u00e3o podem ser apagadas');return;}
   var keys=[],anyGcs=false;
   rows.forEach(function(r){
     anyGcs=anyGcs||r.dataset.ongcs==='1';
@@ -520,14 +535,20 @@ function requestDeleteRows(pane,rows,scope){
     var fd=new FormData();fd.set('keys',JSON.stringify(keys));if(scp)fd.set('also',scp);
     fetch('/studio/'+pane.dataset.id+'/'+pane.dataset.face+'/delete-many',{method:'POST',body:fd})
       .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});return r.json();})
-      .then(function(d){if(d.errors&&d.errors.length)alert('apagado(s) '+d.deleted+', erro(s): '+d.errors.length);})
+      .then(function(d){
+        var msgs=[];
+        if(d.errors&&d.errors.length)msgs.push(d.errors.length+' erro(s)');
+        if(d.skipped&&d.skipped.length)msgs.push(d.skipped.length+' autom\u00e1tica(s) mantida(s)');
+        if(msgs.length)alert('apagado(s) '+d.deleted+' \u00b7 '+msgs.join(' \u00b7 '));
+      })
       .then(function(){return refreshPane(pane.closest('.detail'),pane.dataset.id,pane.dataset.face);})
       .catch(function(e){alert('falhou: '+e.message);});
   };
   if(scope!==undefined)return go(scope);
   if(!skipDeleteConfirm()){
+    var extra=locked.length?(' (mantendo '+locked.length+' autom\u00e1tica'+(locked.length>1?'s':'')+')'):'';
     if(anyGcs)return askDelScope(rows.length,go);
-    if(!confirm('Apagar '+rows.length+' imagem'+(rows.length>1?'ns':'')+'?'))return;
+    if(!confirm('Apagar '+rows.length+' imagem'+(rows.length>1?'ns':'')+extra+'?'))return;
   }
   go('');
 }
@@ -538,6 +559,7 @@ function vdelCount(pane){
   var b=btn.querySelector('.vmarked');if(b)b.textContent=n;
 }
 function toggleMark(pane,row,on){
+  if(row.dataset.managed==='1')return; // locked: re-downloaded by the sync
   row.classList.toggle('marked',on);
   var pk=row.querySelector('.vpick');if(pk)pk.checked=on;
   vdelCount(pane);
@@ -595,10 +617,19 @@ function selectRow(pane,row){
     var set=function(n,v){var el=f.querySelector('[name='+n+']');if(el)el.value=v;};
     set('provider',row.dataset.provider);set('version',row.dataset.version);set('ext',row.dataset.ext);set('kind',row.dataset.kind);
   });
-  var onGcs=row.dataset.ongcs==='1';
-  var save=bar.querySelector('.act-save'),gdel=bar.querySelector('.act-gdel');
+  var onGcs=row.dataset.ongcs==='1',managed=row.dataset.managed==='1';
+  var save=bar.querySelector('.act-save'),gdel=bar.querySelector('.act-gdel'),del=bar.querySelector('.act-del');
   if(save)save.style.display=onGcs?'none':'';
-  if(gdel)gdel.style.display=onGcs?'':'none';
+  // managed rows: no delete anywhere (the sync would undo it) — promote/save only
+  if(del)del.style.display=managed?'none':'';
+  if(gdel)gdel.style.display=onGcs&&!managed?'':'none';
+  var note=bar.querySelector('.managednote');
+  if(note)note.hidden=!managed;
+  var meta=bar.querySelector('.selmeta');
+  if(meta){
+    var t=Number(row.dataset.version);
+    meta.textContent=row.dataset.provider.toUpperCase()+' \u00b7 '+row.dataset.ext.toUpperCase()+(!t||isNaN(t)?'':' \u00b7 '+new Date(t).toLocaleDateString('pt-BR')+(managed?' \u00b7 re-baixada a cada sync':''));
+  }
 }
 
 function initPane(pane){

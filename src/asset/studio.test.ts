@@ -27,6 +27,7 @@ test("upload → history → promote copies bytes to the stable display slot", a
   expect(hist.length).toBe(2);
   expect(hist[0].version >= hist[1].version).toBe(true); // newest first
   expect(hist[0].provider).toBe("openai");
+  expect(hist[0].managed).toBe(false); // generated art is deletable
 
   const dest = await promote(service, k3, "front");
   expect(keyPath(dest)).toBe(keyPath(displayKey("clank", "front", "png")));
@@ -37,6 +38,23 @@ test("upload → history → promote copies bytes to the stable display slot", a
   // history untouched by promote
   expect((await history(service, "clank", "front")).length).toBe(2);
   void k1;
+});
+
+test("history hides resize derivatives and flags downloaded covers as managed", async () => {
+  const { service, origin, cache } = svc();
+  const cover = { entity: "clank", kind: "cover", source: "bgg", variant: "original", ext: "jpg" };
+  await service.put(cover, { bytes: new Uint8Array([1]), contentType: "image/jpeg", fingerprint: "bgg:123" });
+  // a resize the render path cached (variant = <size>-<12-hex fp tag>)
+  await cache.put({ ...cover, variant: "200x-0a1b2c3d4e5f" }, { bytes: new Uint8Array([2]), contentType: "image/jpeg" });
+  // an older generation of the same cover (stale fp tag) must be hidden too
+  await cache.put({ ...cover, variant: "900x-ff0fee0fee0f" }, { bytes: new Uint8Array([3]), contentType: "image/jpeg" });
+
+  const hist = await history(service, "clank", "front");
+  expect(hist.map((c) => c.version)).toEqual(["original"]); // no phantom resizes
+  expect(hist[0].managed).toBe(true); // bgg cover: sync re-pulls it, delete refused
+  expect(hist[0].provider).toBe("bgg");
+  expect(await origin.head(cover)).not.toBeNull();
+  void cache;
 });
 
 test("promote records a displays.json version marker when given a dataDir", async () => {

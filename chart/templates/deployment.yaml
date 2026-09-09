@@ -131,6 +131,28 @@ spec:
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: /var/secrets/gcp/key.json
             {{- end }}
+            # Provider keys for face generation + Obsidian for art-note/global
+            # style write-back. Same secret the app uses.
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: GEMINI_API_KEY
+                  optional: true
+            - name: OBSIDIAN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: OBSIDIAN_API_KEY
+                  optional: true
+            - name: OBSIDIAN_API_URL
+              value: {{ .Values.obsidianApiUrl | default "https://obsidian.default.svc:27124" | quote }}
           volumeMounts:
             - name: data
               mountPath: /data

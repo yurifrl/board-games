@@ -10,7 +10,7 @@ import { loadCatalog } from "../store.ts";
 import { buildAssetPlatform } from "../asset/platform.ts";
 import { runPipeline } from "../asset/pipeline.ts";
 import type { Entity } from "../asset/types.ts";
-import { addCandidate, history, promote, type Provider } from "../asset/studio.ts";
+import { addCandidate, history, promote, isManaged, type Provider } from "../asset/studio.ts";
 import { generateFace, composePrompt } from "../asset/gen/generate.ts";
 import { obsidianEnabled, readGlobalStyleRaw, saveGlobalStyle, DEFAULT_GLOBAL_STYLE, readGameArtNote, saveGameArtNote } from "../asset/gen/prompt-store.ts";
 import type { AssetKey } from "../asset/key.ts";
@@ -184,20 +184,24 @@ app.post("/studio/:id/:face/save", async (c) => {
   return c.json({ ok: true });
 });
 
-// Delete from the durable origin (GCS) only — keeps the local copy.
+// Delete from the durable origin (GCS) only — keeps the local copy. Managed
+// candidates are refused (same reason as delete: the sync re-pulls them).
 app.post("/studio/:id/:face/gcs-delete", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
+  if (isManaged(r.key.source)) return c.text(`capa automática (${r.key.source}) — re-baixada pelo sync; não pode ser apagada`, 409);
   await service.removeOrigin(r.key);
   return c.json({ ok: true });
 });
 
-// Delete the local copy. When GCS is off this is the only tier, so it's a full
-// delete; when GCS is on the durable copy stays until gcs-delete — or the
-// delete dialog sends also=gcs to remove both tiers in one shot.
+// Delete the local copy. Managed candidates (bgg/ludopedia covers) are refused:
+// the worker re-pulls them on every sync, so deleting is a confusing no-op —
+// use "Baixar capas" to refresh instead. When GCS is on the durable copy stays
+// until gcs-delete — or the delete dialog sends also=gcs to remove both tiers.
 app.post("/studio/:id/:face/delete", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
+  if (isManaged(r.key.source)) return c.text(`capa automática (${r.key.source}) — re-baixada pelo sync; não pode ser apagada`, 409);
   const form = await c.req.parseBody(); // cached: keyFromForm already parsed it
   await service.removeDerivativesOf(r.key); // sweep its resizes first; else they linger as phantom rows
   if (tiered) {
@@ -234,8 +238,13 @@ app.post("/studio/:id/:face/delete-many", async (c) => {
   }
   const alsoGcs = String(form["also"] ?? "") === "gcs";
   const errors: string[] = [];
+  const skipped: string[] = []; // managed (bgg/ludopedia) — sync re-pulls them
   let deleted = 0;
   await Promise.all(keys.map(async (key) => {
+    if (isManaged(key.source)) {
+      skipped.push(`${key.source}/${key.variant}`);
+      return;
+    }
     try {
       await service.removeDerivativesOf(key); // sweep resizes first; else phantom rows
       if (tiered) {
@@ -247,7 +256,7 @@ app.post("/studio/:id/:face/delete-many", async (c) => {
       errors.push(`${key.source}/${key.variant}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }));
-  return c.json({ ok: errors.length === 0, deleted, errors });
+  return c.json({ ok: errors.length === 0, deleted, skipped, errors });
 });
 
 // ---- Bulk generation (background job + progress polling) --------------------

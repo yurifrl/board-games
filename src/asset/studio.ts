@@ -25,6 +25,18 @@ import { writeJsonAtomic } from "../store.ts";
 
 export type Provider = "upload" | "openai" | "google" | "ludopedia" | "bgg";
 
+/** Pipeline-managed sources: the worker re-pulls these on every sync cycle, so
+ * an admin delete is futile (the cover returns within minutes). The UI locks
+ * them and the delete routes refuse them outright. */
+export const MANAGED_PROVIDERS = ["bgg", "ludopedia"] as const;
+export const isManaged = (provider: string): boolean =>
+  (MANAGED_PROVIDERS as readonly string[]).includes(provider);
+
+/** A resize derivative cached by AssetService.render: its variant is
+ * `<size>-<12-hex fingerprint tag>` (e.g. `200x-0abc…`). Everything else
+ * (`original`, epoch-ms stamps, `v6`) is a real candidate. */
+const isDerivative = (k: AssetKey): boolean => /-[0-9a-f]{12}$/.test(k.variant);
+
 /** A single stored candidate image, with which tiers currently hold it. */
 export interface Candidate {
   key: AssetKey;
@@ -35,6 +47,9 @@ export interface Candidate {
   onDisk: boolean;
   /** True when this exact candidate is the one currently promoted to display. */
   chosen: boolean;
+  /** True for pipeline-managed downloads (bgg/ludopedia): re-fetched on every
+   * sync, so deletion is refused — they can only be re-downloaded or promoted. */
+  managed: boolean;
 }
 
 /** The chosen-image slot the public app + Obsidian read. */
@@ -61,7 +76,7 @@ export async function history(service: AssetService, id: string, face: Face): Pr
     const p = keyPath(k);
     let e = byPath.get(p);
     if (!e) {
-      e = { key: k, provider: k.source, version: k.variant, ext: k.ext, onGcs: false, onDisk: false, chosen: false };
+      e = { key: k, provider: k.source, version: k.variant, ext: k.ext, onGcs: false, onDisk: false, chosen: false, managed: isManaged(k.source) };
       byPath.set(p, e);
     }
     return e;
@@ -73,8 +88,8 @@ export async function history(service: AssetService, id: string, face: Face): Pr
     service.listOrigin({ entity: id }),
     service.listCache({ entity: id }),
   ]);
-  for (const k of orig) if (kinds.includes(k.kind)) ensure(k).onGcs = true;
-  for (const k of cache) if (kinds.includes(k.kind)) ensure(k).onDisk = true;
+  for (const k of orig) if (kinds.includes(k.kind) && !isDerivative(k)) ensure(k).onGcs = true;
+  for (const k of cache) if (kinds.includes(k.kind) && !isDerivative(k)) ensure(k).onDisk = true;
   // Flag the candidate currently promoted to the display slot (recorded as the
   // display blob's fingerprint at promote time).
   const chosen = await chosenSourcePath(service, id, face);
