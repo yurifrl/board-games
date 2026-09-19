@@ -44,7 +44,7 @@ const fbChain = (fb: string) =>
 
 const VRow: FC<{ c: Candidate; gcs: boolean; mixed: boolean }> = ({ c, gcs, mixed }) => {
   const when = new Date(Number(c.version) || 0);
-  const label = when.getTime() ? when.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "";
+  const label = when.getTime() ? when.toLocaleDateString("en-US", { day: "2-digit", month: "short" }) : "";
   const prov = `${c.managed ? "⇣ " : ""}${c.provider}${mixed ? " · " + c.ext.toUpperCase() : ""}`;
   return (
     <button
@@ -58,12 +58,12 @@ const VRow: FC<{ c: Candidate; gcs: boolean; mixed: boolean }> = ({ c, gcs, mixe
       data-kind={c.key.kind}
       data-ongcs={c.onGcs ? "1" : ""}
       data-managed={c.managed ? "1" : ""}
-      title={`${prov}${label ? " · " + label : ""}${c.managed ? " · baixada automaticamente (sync) — não pode ser apagada" : ""}`}
+      title={`${prov}${label ? " · " + label : ""}${c.managed ? " · auto-downloaded (sync) — cannot be deleted" : ""}`}
     >
-      <input type="checkbox" class="vpick" title="Selecionar" disabled={c.managed} />
+      <input type="checkbox" class="vpick" title="Select" disabled={c.managed} />
       <img src={candidateUrl(c, 200)} alt="" loading="lazy" />
       <span class="vprov">{prov}</span>
-      {gcs && c.onGcs ? <span class="vsaved" title="salva no GCS">☁</span> : null}
+      {gcs && c.onGcs ? <span class="vsaved" title="saved to GCS">☁</span> : null}
     </button>
   );
 };
@@ -86,18 +86,18 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
     <div class="fpane" data-id={g.id} data-face={face}>
       <div class="rail">
         <div class="srcfilter">
-          <button type="button" data-g="all" class="on">Todas <b>{history.length}</b></button>
+          <button type="button" data-g="all" class="on">All <b>{history.length}</b></button>
           {srcs.map((s) => <button type="button" data-g={s}>{s} <b>{history.filter((c) => c.provider === s).length}</b></button>)}
-          <button type="button" data-g="gen">Geradas</button>
-          <button type="button" data-g="upload">Enviadas</button>
-          <button type="button" class="vbulkdel" hidden>🗑 Apagar (<b class="vmarked">0</b>)</button>
+          <button type="button" data-g="gen">Generated</button>
+          <button type="button" data-g="upload">Uploaded</button>
+          <button type="button" class="vbulkdel" hidden>🗑 Delete (<b class="vmarked">0</b>)</button>
         </div>
         <div class="vlist">
           <form class="add" method="post" action={`/studio/${g.id}/${face}/upload`} enctype="multipart/form-data">
-            <label title="Enviar imagem do computador">＋<input type="file" name="file" accept="image/*" onchange="this.form.requestSubmit()" /></label>
+            <label title="Upload an image from your computer">＋<input type="file" name="file" accept="image/*" onchange="this.form.requestSubmit()" /></label>
           </form>
           {history.map((c) => <VRow c={c} gcs={opts.gcs} mixed={mixed} />)}
-          {history.length === 0 ? <div class="empty">sem histórico ainda</div> : null}
+          {history.length === 0 ? <div class="empty">no history yet</div> : null}
         </div>
       </div>
       <div class="stage">
@@ -106,26 +106,26 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
         </div>
         <div class="actbar" hidden>
           <span class="selmeta"></span>
-          <form method="post" action={`/studio/${g.id}/${face}/promote`}>{hidden}<button class="btn primary" title="Tornar esta a imagem exibida">★ Promover</button></form>
-          <form method="post" action={`/studio/${g.id}/${face}/save`} class="act-save">{hidden}<button class="btn">☁ Salvar no GCS</button></form>
-          <form method="post" action={`/studio/${g.id}/${face}/gcs-delete`} class="act-gdel">{hidden}<button class="btn warn">☁ Remover do GCS</button></form>
-          <form method="post" action={`/studio/${g.id}/${face}/delete`} class="act-del">{hidden}<button class="btn danger">🗑 Apagar</button></form>
-          <span class="managednote" hidden>⇣ baixada automaticamente (sync) — não pode ser apagada; use ⬇ Baixar capas para atualizar</span>
+          <form method="post" action={`/studio/${g.id}/${face}/promote`}>{hidden}<button class="btn primary" title="Make this the displayed image">★ Promote</button></form>
+          <form method="post" action={`/studio/${g.id}/${face}/save`} class="act-save">{hidden}<button class="btn">☁ Save to GCS</button></form>
+          <form method="post" action={`/studio/${g.id}/${face}/gcs-delete`} class="act-gdel">{hidden}<button class="btn warn">☁ Remove from GCS</button></form>
+          <form method="post" action={`/studio/${g.id}/${face}/delete`} class="act-del">{hidden}<button class="btn danger">🗑 Delete</button></form>
+          <span class="managednote" hidden>⇣ auto-downloaded (sync) — cannot be deleted; use ⬇ Download covers to refresh</span>
         </div>
       </div>
       {opts.providers.length > 0 ? (
         <aside class="side">
-          <div class="gptitle">Gerar {face === "front" ? "frente" : "lombada"}</div>
+          <div class="gptitle">Generate {face === "front" ? "front" : "spine"}</div>
           <form method="post" action={`/studio/${g.id}/${face}/generate`}>
-            <textarea name="prompt" class="prompt" rows={8} placeholder="carregando prompt padrão…"></textarea>
+            <textarea name="prompt" class="prompt" rows={8} placeholder="loading default prompt…"></textarea>
             <div class="gpcontrols">
               {opts.providers.length > 1 ? (
                 <select name="provider" class="provsel">{opts.providers.map((p) => <option value={p}>{PROVIDER_LABEL[p]}</option>)}</select>
               ) : (
                 <input type="hidden" name="provider" value={opts.providers[0]} />
               )}
-              <span class="gpaspect">proporção automática</span>
-              <button type="submit" class="gengo">Gerar</button>
+              <span class="gpaspect">automatic aspect ratio</span>
+              <button type="submit" class="gengo">Generate</button>
             </div>
           </form>
         </aside>
@@ -144,7 +144,7 @@ const Tile: FC<{ g: Game; opts: Opts; active?: Studio }> = ({ g, opts, active })
   const ar = g.dimensions ? `${g.dimensions.widthCm}/${g.dimensions.heightCm}` : "3/4";
   return (
     <section class={`card${active ? " open" : ""}`} data-id={g.id} data-name={g.name.toLowerCase()} style={`--tint:${g.tint ?? "#3a3a44"}`}>
-      <input type="checkbox" class="pick" title="Selecionar" />
+      <input type="checkbox" class="pick" title="Select" />
       <a class="tile" href={`/studio/${g.id}`}>
         <span class="front" style={`aspect-ratio:${ar}`}>
           <img src={displayUrl(g.id, "front", 300)} alt="" loading="lazy" data-fb={coverFallback(g, 300) || undefined} onerror={fbChain(coverFallback(g, 300))} />
@@ -160,18 +160,18 @@ const Tile: FC<{ g: Game; opts: Opts; active?: Studio }> = ({ g, opts, active })
           <div class="dhead">
             <b>{g.name}</b>
             <div class="facetabs">
-              <button type="button" data-f="front" class="on">Frente</button>
-              <button type="button" data-f="spine">Lombada</button>
+              <button type="button" data-f="front" class="on">Front</button>
+              <button type="button" data-f="spine">Spine</button>
             </div>
-            <form method="post" action={`/studio/${g.id}/download`} class="dlform"><button type="submit" class="dlbtn" title="Rebaixar capas BGG/Ludopedia">⬇ Baixar capas</button></form>
-            <a class="close" href="/" title="Fechar">✕</a>
+            <form method="post" action={`/studio/${g.id}/download`} class="dlform"><button type="submit" class="dlbtn" title="Re-download BGG/Ludopedia covers">⬇ Download covers</button></form>
+            <a class="close" href="/" title="Close">✕</a>
           </div>
           {opts.obsidian ? (
             <details class="artnote">
-              <summary>✎ Nota de arte (Obsidian · aplica-se aos prompts)</summary>
+              <summary>✎ Art note (Obsidian · applied to prompts)</summary>
               <form method="post" action={`/studio/${g.id}/art-note`}>
-                <textarea name="text" class="prompt" rows={2} placeholder="direção de arte específica deste jogo…">{g.boxArtDescription ?? ""}</textarea>
-                <div class="genrow"><button type="submit" class="gengo">Salvar no Obsidian</button></div>
+                <textarea name="text" class="prompt" rows={2} placeholder="game-specific art direction…">{g.boxArtDescription ?? ""}</textarea>
+                <div class="genrow"><button type="submit" class="gengo">Save to Obsidian</button></div>
               </form>
             </details>
           ) : null}
@@ -188,7 +188,7 @@ const Tile: FC<{ g: Game; opts: Opts; active?: Studio }> = ({ g, opts, active })
 export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =>
   "<!doctype html>" +
   (
-    <html lang="pt-BR">
+    <html lang="en">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -199,51 +199,51 @@ export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =
         <header>
           <h1>Cover Studio</h1>
           <div class="views">
-            <button data-v="front">Frente</button>
-            <button data-v="spine">Lombada</button>
-            <button data-v="both" class="on">Ambos</button>
+            <button data-v="front">Front</button>
+            <button data-v="spine">Spine</button>
+            <button data-v="both" class="on">Both</button>
           </div>
-          <input id="q" type="search" placeholder="filtrar jogos…" />
-          {opts.providers.length > 0 ? <button id="selBtn" class="gstyle">Selecionar</button> : null}
-          {opts.obsidian ? <button id="globalStyleBtn" class="gstyle">Estilo global</button> : null}
+          <input id="q" type="search" placeholder="filter games…" />
+          {opts.providers.length > 0 ? <button id="selBtn" class="gstyle">Select</button> : null}
+          {opts.obsidian ? <button id="globalStyleBtn" class="gstyle">Global style</button> : null}
         </header>
         {opts.providers.length > 0 ? (
           <div id="bulkbar">
-            <input id="pat" type="text" placeholder="regex p/ marcar (ex: ^cat|arcs)" />
-            <button type="button" id="patGo">Marcar</button>
-            <span id="selCount">0 marcados</span>
+            <input id="pat" type="text" placeholder="regex to match (e.g. ^cat|arcs)" />
+            <button type="button" id="patGo">Match</button>
+            <span id="selCount">0 marked</span>
             <select id="bulkFace">
-              <option value="front">Frente</option>
-              <option value="spine">Lombada</option>
-              <option value="both">Ambos</option>
+              <option value="front">Front</option>
+              <option value="spine">Spine</option>
+              <option value="both">Both</option>
             </select>
             {opts.providers.length > 1 ? (
               <select id="bulkProv">{opts.providers.map((p) => <option value={p}>{PROVIDER_LABEL[p]}</option>)}</select>
             ) : null}
             <button type="button" id="bulkGo" class="gengo">Gerar</button>
-            <button type="button" id="bulkDl">⬇ Baixar</button>
+            <button type="button" id="bulkDl">⬇ Download</button>
             <span id="bulkProg"></span>
           </div>
         ) : null}
         {opts.obsidian ? (
           <dialog id="globalStyleDlg">
             <form method="post" action="/global-style">
-              <h3>Estilo global <span class="hint">(Obsidian · Inventory.md · aplica-se à frente)</span></h3>
-              <textarea name="style" class="prompt" rows={10} placeholder="estilo da casa…"></textarea>
+              <h3>Global style <span class="hint">(Obsidian · Inventory.md · applies to the front)</span></h3>
+              <textarea name="style" class="prompt" rows={10} placeholder="house style…"></textarea>
               <div class="genrow">
-                <button type="button" class="gsclose">Cancelar</button>
-                <button type="submit" class="gengo">Salvar no Obsidian</button>
+                <button type="button" class="gsclose">Cancel</button>
+                <button type="submit" class="gengo">Save to Obsidian</button>
               </div>
             </form>
           </dialog>
         ) : null}
         {opts.gcs ? (
           <dialog id="delDlg">
-            <h3>Apagar imagem</h3>
-            <p class="hint" id="delHint">Esta cópia existe localmente e no GCS (☁). O que apagar?</p>
+            <h3>Delete image</h3>
+            <p class="hint" id="delHint">This copy exists locally and on GCS (☁). What should be deleted?</p>
             <div class="genrow">
-              <button type="button" id="delCancel" class="gsclose">Cancelar</button>
-              <button type="button" id="delLocal" class="btn">🗑 Só local</button>
+              <button type="button" id="delCancel" class="gsclose">Cancel</button>
+              <button type="button" id="delLocal" class="btn">🗑 Local only</button>
               <button type="button" id="delBoth" class="btn danger">☁ Local + GCS</button>
             </div>
           </dialog>
@@ -392,7 +392,7 @@ var body=document.body;
   var btn=document.getElementById('globalStyleBtn'),dlg=document.getElementById('globalStyleDlg');
   if(!btn||!dlg)return;var ta=dlg.querySelector('textarea');
   btn.onclick=function(){
-    ta.value='carregando\u2026';dlg.showModal();
+    ta.value='loading\u2026';dlg.showModal();
     fetch('/global-style').then(function(r){return r.text();}).then(function(t){ta.value=t;});
   };
   dlg.querySelector('.gsclose').onclick=function(){dlg.close();};
@@ -418,7 +418,7 @@ document.querySelectorAll('.card').forEach(function(card){
 
 // ---- bulk selection + generation ----
 function picked(){return Array.prototype.slice.call(document.querySelectorAll('.card .pick:checked')).map(function(p){return p.closest('.card').dataset.id;});}
-function bulkCount(){var el=document.getElementById('selCount');if(el)el.textContent=picked().length+' marcados';}
+function bulkCount(){var el=document.getElementById('selCount');if(el)el.textContent=picked().length+' marked';}
 (function(){
   var selBtn=document.getElementById('selBtn');if(!selBtn)return;
   selBtn.onclick=function(){
@@ -427,7 +427,7 @@ function bulkCount(){var el=document.getElementById('selCount');if(el)el.textCon
   };
   var patGo=document.getElementById('patGo'),pat=document.getElementById('pat');
   if(patGo)patGo.onclick=function(){
-    var re;try{re=new RegExp(pat.value,'i');}catch(e){alert('regex inv\u00e1lida');return;}
+    var re;try{re=new RegExp(pat.value,'i');}catch(e){alert('invalid regex');return;}
     document.querySelectorAll('.card').forEach(function(c){
       if(c.style.display==='none')return;
       var m=re.test(c.dataset.name);var pk=c.querySelector('.pick');pk.checked=m;c.classList.toggle('marked',m);
@@ -436,18 +436,18 @@ function bulkCount(){var el=document.getElementById('selCount');if(el)el.textCon
   };
   var go=document.getElementById('bulkGo'),dl=document.getElementById('bulkDl'),prog=document.getElementById('bulkProg');
   function runBulk(url,extra){
-    var ids=picked();if(!ids.length){alert('nada marcado');return;}
+    var ids=picked();if(!ids.length){alert('nothing marked');return;}
     var fd=new URLSearchParams();fd.set('ids',ids.join(','));for(var k in extra)fd.set(k,extra[k]);
-    if(go)go.disabled=true;if(dl)dl.disabled=true;prog.textContent='iniciando\u2026';
+    if(go)go.disabled=true;if(dl)dl.disabled=true;prog.textContent='starting\u2026';
     fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()})
       .then(function(r){return r.json();}).then(function(d){
         var t=setInterval(function(){
           fetch('/bulk/status/'+d.jobId).then(function(r){return r.json();}).then(function(s){
-            prog.textContent=s.done+'/'+s.total+(s.current?(' \u00b7 '+s.current):'')+(s.errors.length?(' \u00b7 '+s.errors.length+' erro(s)'):'');
-            if(!s.running){clearInterval(t);if(go)go.disabled=false;if(dl)dl.disabled=false;prog.textContent='conclu\u00eddo '+s.done+'/'+s.total+(s.errors.length?(' ('+s.errors.length+' erro)'):'');setTimeout(function(){location.reload();},900);}
+            prog.textContent=s.done+'/'+s.total+(s.current?(' \u00b7 '+s.current):'')+(s.errors.length?(' \u00b7 '+s.errors.length+' error(s)'):'');
+            if(!s.running){clearInterval(t);if(go)go.disabled=false;if(dl)dl.disabled=false;prog.textContent='done '+s.done+'/'+s.total+(s.errors.length?(' ('+s.errors.length+' error)'):'');setTimeout(function(){location.reload();},900);}
           });
         },1000);
-      }).catch(function(e){if(go)go.disabled=false;if(dl)dl.disabled=false;prog.textContent='falhou: '+e;});
+      }).catch(function(e){if(go)go.disabled=false;if(dl)dl.disabled=false;prog.textContent='failed: '+e;});
   }
   if(go)go.onclick=function(){
     var face=document.getElementById('bulkFace').value;
@@ -515,7 +515,7 @@ if(delDlg){
 // bulk path: any picked row is GCS-backed -> offer local-only vs local+GCS
 function askDelScope(n,fn){
   if(!delDlg)return fn('');
-  setDelHint(n+(n>1?' imagens':' imagem')+' existe'+(n>1?'m':'')+' localmente e no GCS (☁). O que apagar?');
+  setDelHint(n+(n>1?' images':' image')+(n>1?' exist':' exists')+' locally and on GCS (☁). What should be deleted?');
   delFn=fn;delDlg.showModal();
 }
 // delete the given rows of one face pane in a single request, then refresh it.
@@ -525,7 +525,7 @@ function requestDeleteRows(pane,rows,scope){
   if(!rows.length)return;
   var locked=rows.filter(function(r){return r.dataset.managed==='1';});
   rows=rows.filter(function(r){return r.dataset.managed!=='1';});
-  if(!rows.length){alert(locked.length+' imagem(ens) autom\u00e1tica(s) \u2014 s\u00e3o re-baixadas pelo sync e n\u00e3o podem ser apagadas');return;}
+  if(!rows.length){alert(locked.length+' managed image(s) \u2014 re-downloaded by the sync and cannot be deleted');return;}
   var keys=[],anyGcs=false;
   rows.forEach(function(r){
     anyGcs=anyGcs||r.dataset.ongcs==='1';
@@ -537,18 +537,18 @@ function requestDeleteRows(pane,rows,scope){
       .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});return r.json();})
       .then(function(d){
         var msgs=[];
-        if(d.errors&&d.errors.length)msgs.push(d.errors.length+' erro(s)');
-        if(d.skipped&&d.skipped.length)msgs.push(d.skipped.length+' autom\u00e1tica(s) mantida(s)');
-        if(msgs.length)alert('apagado(s) '+d.deleted+' \u00b7 '+msgs.join(' \u00b7 '));
+        if(d.errors&&d.errors.length)msgs.push(d.errors.length+' error(s)');
+        if(d.skipped&&d.skipped.length)msgs.push(d.skipped.length+' managed image(s) kept');
+        if(msgs.length)alert('deleted '+d.deleted+' \u00b7 '+msgs.join(' \u00b7 '));
       })
       .then(function(){return refreshPane(pane.closest('.detail'),pane.dataset.id,pane.dataset.face);})
-      .catch(function(e){alert('falhou: '+e.message);});
+      .catch(function(e){alert('failed: '+e.message);});
   };
   if(scope!==undefined)return go(scope);
   if(!skipDeleteConfirm()){
-    var extra=locked.length?(' (mantendo '+locked.length+' autom\u00e1tica'+(locked.length>1?'s':'')+')'):'';
+    var extra=locked.length?(' (keeping '+locked.length+' managed image'+(locked.length>1?'s':'')+')'):'';
     if(anyGcs)return askDelScope(rows.length,go);
-    if(!confirm('Apagar '+rows.length+' imagem'+(rows.length>1?'ns':'')+extra+'?'))return;
+    if(!confirm('Delete '+rows.length+' image'+(rows.length>1?'s':'')+extra+'?'))return;
   }
   go('');
 }
@@ -573,16 +573,16 @@ function submitDetailForm(form){
     var row=pane?pane.querySelector('.vrow.sel'):null;
     // GCS-backed pick: offer local-only vs local+GCS instead of a plain confirm
     if(isDel&&row&&row.dataset.ongcs==='1'){setDelHint(DEL_HINT);delForm=form;delDlg.showModal();return;}
-    if(!confirm(isGdel?'Remover do GCS? (mantém a cópia local)':'Apagar esta imagem?'))return;
+    if(!confirm(isGdel?'Remove from GCS? (keeps the local copy)':'Delete this image?'))return;
   }
   if(form.dataset.confirmed)delete form.dataset.confirmed;
   var btn=form.querySelector('button[type=submit],button:not([type])');
-  if(btn){btn.dataset.o=btn.dataset.o||btn.textContent;btn.disabled=true;if(act.indexOf('/generate')>=0)btn.textContent='gerando…';}
+  if(btn){btn.dataset.o=btn.dataset.o||btn.textContent;btn.disabled=true;if(act.indexOf('/generate')>=0)btn.textContent='generating…';}
   fetch(act,{method:'POST',body:new FormData(form)}).then(function(r){
     if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});
   }).then(function(){
     if(act.indexOf('/promote')>=0&&pane)updateTile(id,face,pane.querySelector('.vrow.sel'));
-    if(act.indexOf('/art-note')>=0){flash(btn,'salvo ✓');return;}
+    if(act.indexOf('/art-note')>=0){flash(btn,'saved ✓');return;}
     if(act.indexOf('/download')>=0)return Promise.all([refreshPane(det,id,'front'),refreshPane(det,id,'spine')]);
     if(face)return refreshPane(det,id,face);
   }).catch(function(e){alert('falhou: '+e.message);}).finally(function(){
@@ -628,7 +628,7 @@ function selectRow(pane,row){
   var meta=bar.querySelector('.selmeta');
   if(meta){
     var t=Number(row.dataset.version);
-    meta.textContent=row.dataset.provider.toUpperCase()+' \u00b7 '+row.dataset.ext.toUpperCase()+(!t||isNaN(t)?'':' \u00b7 '+new Date(t).toLocaleDateString('pt-BR')+(managed?' \u00b7 re-baixada a cada sync':''));
+    meta.textContent=row.dataset.provider.toUpperCase()+' \u00b7 '+row.dataset.ext.toUpperCase()+(!t||isNaN(t)?'':' \u00b7 '+new Date(t).toLocaleDateString('en-US')+(managed?' \u00b7 re-downloaded on every sync':''));
   }
 }
 

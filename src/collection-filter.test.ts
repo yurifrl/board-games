@@ -299,7 +299,7 @@ describe("collection filters", () => {
 
     expect(html).toContain('class="box parted"');
     expect(html).toContain('class="spine parted"');
-    expect(html).toContain('<span class="bye" title="Fora da coleção">👋</span>');
+    expect(html).toContain('<span class="bye" title="Out of the collection">👋</span>');
     expect(html).toContain("(values.parted==='parted'?d.parted==='yes':values.parted==='keep'?d.parted!=='yes':true)");
     expect(html).toContain('name="game-parted" value="" checked=""');
     expect(html).toContain('name="game-parted" value="keep"');

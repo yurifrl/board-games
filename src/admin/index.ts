@@ -66,7 +66,7 @@ app.get("/", async (c) => c.html(studioPage(await loadCatalog(DATA_DIR), studioO
 app.get("/studio/:id", async (c) => {
   const games = await loadCatalog(DATA_DIR);
   const game = games.find((g) => g.id === c.req.param("id"));
-  if (!game) return c.text("Jogo não encontrado", 404);
+  if (!game) return c.text("Game not found", 404);
   const [front, spine] = await Promise.all([
     history(service, game.id, "front"),
     history(service, game.id, "spine"),
@@ -189,19 +189,19 @@ app.post("/studio/:id/:face/save", async (c) => {
 app.post("/studio/:id/:face/gcs-delete", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
-  if (isManaged(r.key.source)) return c.text(`capa automática (${r.key.source}) — re-baixada pelo sync; não pode ser apagada`, 409);
+  if (isManaged(r.key.source)) return c.text(`managed cover (${r.key.source}) — re-downloaded by the sync; cannot be deleted`, 409);
   await service.removeOrigin(r.key);
   return c.json({ ok: true });
 });
 
 // Delete the local copy. Managed candidates (bgg/ludopedia covers) are refused:
 // the worker re-pulls them on every sync, so deleting is a confusing no-op —
-// use "Baixar capas" to refresh instead. When GCS is on the durable copy stays
+// use "Download covers" to refresh instead. When GCS is on the durable copy stays
 // until gcs-delete — or the delete dialog sends also=gcs to remove both tiers.
 app.post("/studio/:id/:face/delete", async (c) => {
   const r = await keyFromForm(c);
   if (!r) return c.text("bad request", 400);
-  if (isManaged(r.key.source)) return c.text(`capa automática (${r.key.source}) — re-baixada pelo sync; não pode ser apagada`, 409);
+  if (isManaged(r.key.source)) return c.text(`managed cover (${r.key.source}) — re-downloaded by the sync; cannot be deleted`, 409);
   const form = await c.req.parseBody(); // cached: keyFromForm already parsed it
   await service.removeDerivativesOf(r.key); // sweep its resizes first; else they linger as phantom rows
   if (tiered) {

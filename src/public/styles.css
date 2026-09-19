@@ -133,7 +133,7 @@ body.view-spine .view-toggle { background: rgba(150,110,60,.9); }
 }
 @media (prefers-reduced-motion: reduce) { .view-toggle.hint { animation: none; } }
 
-/* Hint-only label: reveals "trocar visualização" left-to-right for a few seconds while the toggle is still blinking. */
+/* Hint-only label: reveals "switch view" left-to-right for a few seconds while the toggle is still blinking. */
 .view-toggle-label {
   position: fixed; left: 68px; bottom: 16px; z-index: 60;
   height: 44px; display: flex; align-items: center;

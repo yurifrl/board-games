@@ -31,7 +31,8 @@ export function signedCover(entity: string, source: "bgg" | "ludopedia", w = 400
 
 // Spine: prefer the promoted display/spine, else the old generated spine face.
 export function signedSpine(entity: string): string {
-  return signedDisplay(entity, "spine", 208, 628, displayVersions[`${entity}/spine`]);
+  const v = displayVersions[`${entity}/spine`];
+  return v ? signedDisplay(entity, "spine", 208, 628, v) : genSpine(entity);
 }
 function genSpine(entity: string): string {
   const key = boxArtKey(entity, "spine");
@@ -39,10 +40,17 @@ function genSpine(entity: string): string {
 }
 
 const coverProvider = (g: Game): "bgg" | "ludopedia" | null => (g.bggId ? "bgg" : g.ludopediaId ? "ludopedia" : null);
-const coverSrc = (g: Game, w = 400, h?: number): string => signedDisplay(g.id, "front", w, h, displayVersions[`${g.id}/front`]);
 const coverFallback = (g: Game, w = 400, h?: number): string => {
   const s = coverProvider(g);
   return s ? signedCover(g.id, s, w, h) : g.image ?? "";
+};
+// Promoted display art when one exists; otherwise the provider cover directly —
+// guessing a display URL would just 404 (one GCS origin probe per game) before
+// the onerror fallback fires.
+const coverSrc = (g: Game, w = 400, h?: number): string => {
+  const v = displayVersions[`${g.id}/front`];
+  if (v) return signedDisplay(g.id, "front", w, h, v);
+  return coverFallback(g, w, h) || signedDisplay(g.id, "front", w, h);
 };
 
 const canSeeSale = (perm: Permission) => !!perm.canSeePrices || !!perm.admin;
@@ -52,7 +60,7 @@ const BOX_WIDTH_PX = 250;
 const cmToPx = (cm: number) => Math.round(cm * SHELF_HEIGHT_PX / SHELF_HEIGHT_CM * 100) / 100;
 
 const Layout: FC<PropsWithChildren<{ title: string; bodyClass?: string }>> = ({ title, bodyClass, children }) => (
-  <html lang="pt-BR">
+  <html lang="en">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -73,24 +81,24 @@ const CoverImg: FC<{ g: Game; cls: string; w?: number; h?: number; ar?: string }
   const fb = coverFallback(g, w, h);
   return (
     <span class={`${cls} cover-ph`} style={`--tint:${g.tint ?? "#3a3a44"}${ar ? `;aspect-ratio:${ar}` : ""}`} data-name={g.name}>
-      {src ? <img src={src} alt={g.name} loading="lazy" data-fb={fb || undefined} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" /> : null}
+      {src ? <img src={src} alt={g.name} loading="lazy" data-fb={fb && fb !== src ? fb : undefined} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" /> : null}
     </span>
   );
 };
 
 const SaleBadge: FC<{ g: Game; perm: Permission }> = ({ g, perm }) =>
-  g.forSale && canSeeSale(perm) ? <span class="tag sale">À VENDA</span> : null;
+  g.forSale && canSeeSale(perm) ? <span class="tag sale">FOR SALE</span> : null;
 
 const PriceLine: FC<{ g: Game; perm: Permission }> = ({ g, perm }) =>
   canSeeSale(perm) && (g.salePrice || g.price) ? <div class="price">{g.salePrice ?? g.price}</div> : null;
 
 const waHref = (g: Game, whatsapp: string) =>
-  `https://wa.me/${whatsapp}?text=${encodeURIComponent(`Olá! Gostaria de fazer uma oferta por "${g.name}". Minha oferta: R$ `)}`;
+  `https://wa.me/${whatsapp}?text=${encodeURIComponent(`Hi! I'd like to make an offer for "${g.name}". My offer: R$ `)}`;
 
 const BidButton: FC<{ g: Game; perm: Permission; whatsapp: string; cls?: string }> = ({ g, perm, whatsapp, cls = "bid" }) =>
   g.forSale && perm.canBid ? (
     <a class={cls} href={waHref(g, whatsapp)} target="_blank" rel="noopener">
-      {cls === "ebid" ? "Ofertar" : "Fazer uma oferta"}
+      {cls === "ebid" ? "Offer" : "Make an offer"}
     </a>
   ) : null;
 
@@ -168,15 +176,15 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
         <span class="face side"></span>
         <span class="face top"></span>
       </span>
-      {g.forSale && canSeeSale(perm) ? <span class="tsale">VENDA</span> : null}
-      {g.partedDate ? <span class="bye" title="Fora da coleção">👋</span> : null}
+      {g.forSale && canSeeSale(perm) ? <span class="tsale">SALE</span> : null}
+      {g.partedDate ? <span class="bye" title="Out of the collection">👋</span> : null}
       <span class="box-labels">
         <span class="box-name">
           {colon === -1 ? g.name : <>{g.name.slice(0, colon + 1)}<br />{g.name.slice(colon + 1).trimStart()}</>}
         </span>
         {grp.expansions.length ? (
           <>
-            <span class="expansion-mark" aria-label={`Inclui ${grp.expansions.length} expansões`}>+</span>
+            <span class="expansion-mark" aria-label={`Includes ${grp.expansions.length} expansions`}>+</span>
             <span class="expansion-tags" aria-hidden="true">
               {grp.expansions.map((expansion, index) => (
                 <span class="expansion-tag" style={`--i:${index}`}>{expansion.name}</span>
@@ -194,11 +202,13 @@ const Box: FC<{ grp: GameGroup; perm: Permission }> = ({ grp, perm }) => {
 // default; the generated spine art covers it when present. Links to the same detail.
 const Spine: FC<{ grp: GameGroup }> = ({ grp }) => {
   const g = grp.base;
+  const spine = signedSpine(g.id);
+  const fb = genSpine(g.id);
   return (
     <a class={`spine${g.partedDate ? " parted" : ""}`} href={`/show/${g.slug}`} data-id={g.id} style={`--tint:${g.tint ?? "#3a3a44"}`} title={g.name}>
       <span class="spine-name">{g.name}</span>
-      <img class="spine-art" src={signedSpine(g.id)} alt={g.name} loading="lazy" data-fb={genSpine(g.id)} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" />
-      {g.partedDate ? <span class="bye" title="Fora da coleção">👋</span> : null}
+      <img class="spine-art" src={spine} alt={g.name} loading="lazy" data-fb={spine !== fb ? fb : undefined} onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.removeAttribute('data-fb')}else{this.remove()}" />
+      {g.partedDate ? <span class="bye" title="Out of the collection">👋</span> : null}
     </a>
   );
 };
@@ -212,14 +222,14 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string; open?: bo
   const showSale = canSeeSale(perm) && (!!g.salePrice || !!g.price);
   return (
     <div class={`detail${open ? " open" : ""}`} style={`--tint:${tint}`}>
-      <a class="detail-bg" href="/" aria-label="Fechar" style={bg ? `background-image:url("${bg}")` : ""}></a>
+      <a class="detail-bg" href="/" aria-label="Close" style={bg ? `background-image:url("${bg}")` : ""}></a>
       <div class="hub">
         <div class="hub-inner">
-          <a class="close" href="/" aria-label="Fechar">✕</a>
+          <a class="close" href="/" aria-label="Close">✕</a>
           <div class="hub-head">
             <div class="hub-cover">
               <CoverImg g={g} cls="cover" ar={g.dimensions ? `${g.dimensions.widthCm}/${g.dimensions.heightCm}` : undefined} />
-              <a class="btn play declare" href={perm.email ? `/game/${g.id}/play` : `/auth/google?game=${g.id}`}>🗓 Quero jogar</a>
+              <a class="btn play declare" href={perm.email ? `/game/${g.id}/play` : `/auth/google?game=${g.id}`}>🗓 I want to play</a>
             </div>
             <div>
               <h1>{g.name}</h1>
@@ -231,22 +241,22 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string; open?: bo
             </div>
           </div>
 
-          <div class="tabs" role="tablist" aria-label={`${g.name}: detalhes`}>
-            <button id={`tab-${g.id}-overview`} class="active" data-t="overview" role="tab" aria-selected="true" aria-controls={`panel-${g.id}-overview`}>Visão geral</button>
+          <div class="tabs" role="tablist" aria-label={`${g.name}: details`}>
+            <button id={`tab-${g.id}-overview`} class="active" data-t="overview" role="tab" aria-selected="true" aria-controls={`panel-${g.id}-overview`}>Overview</button>
             {g.bggId || g.providerData?.bgg ? <button id={`tab-${g.id}-bgg`} data-t="bgg" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-bgg`} tabindex={-1}>BGG</button> : null}
             {g.ludopediaId || g.providerData?.ludopedia ? <button id={`tab-${g.id}-ludopedia`} data-t="ludopedia" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-ludopedia`} tabindex={-1}>Ludopedia</button> : null}
-            {g.notes ? <button id={`tab-${g.id}-notes`} data-t="notes" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-notes`} tabindex={-1}>Anotações</button> : null}
+            {g.notes ? <button id={`tab-${g.id}-notes`} data-t="notes" role="tab" aria-selected="false" aria-controls={`panel-${g.id}-notes`} tabindex={-1}>Notes</button> : null}
           </div>
 
           <section id={`panel-${g.id}-overview`} class="pane active" data-p="overview" role="tabpanel" aria-labelledby={`tab-${g.id}-overview`}>
-            {showSale ? <><h2>Este exemplar</h2><PriceLine g={g} perm={perm} /><BidButton g={g} perm={perm} whatsapp={whatsapp} /></> : null}
+            {showSale ? <><h2>This copy</h2><PriceLine g={g} perm={perm} /><BidButton g={g} perm={perm} whatsapp={whatsapp} /></> : null}
             {grp.expansions.length ? (
               <div class="exps">
-                <div class="exp-label">Expansões ({grp.expansions.length})</div>
+                <div class="exp-label">Expansions ({grp.expansions.length})</div>
                 {grp.expansions.map((e) => <ExpansionRow g={e} perm={perm} whatsapp={whatsapp} />)}
               </div>
             ) : null}
-            {!showSale && !grp.expansions.length ? <p class="note">Ainda não há outros detalhes.</p> : null}
+            {!showSale && !grp.expansions.length ? <p class="note">No other details yet.</p> : null}
           </section>
 
           <ProviderPane game={g} provider="bgg" />
@@ -265,32 +275,32 @@ const Detail: FC<{ grp: GameGroup; perm: Permission; whatsapp: string; open?: bo
 const LoginModal: FC<{ error?: string }> = ({ error }) => (
   <div class="overlay">
     <form class="modal" method="post" action="/auth/login">
-      <a class="x" href="/" title="Fechar" aria-label="Fechar">✕</a>
-      <h2 style="margin:0;font-size:18px">🎲 Entrar</h2>
+      <a class="x" href="/" title="Close" aria-label="Close">✕</a>
+      <h2 style="margin:0;font-size:18px">🎲 Sign in</h2>
       {error ? <p class="note" style="color:#f87171;margin:0">{error}</p> : null}
-      <input type="email" name="email" placeholder="voce@exemplo.com" autocomplete="username" required autofocus />
-      <input type="password" name="password" placeholder="Senha" autocomplete="current-password" required />
-      <button class="btn" type="submit">Entrar</button>
+      <input type="email" name="email" placeholder="you@example.com" autocomplete="username" required autofocus />
+      <input type="password" name="password" placeholder="Password" autocomplete="current-password" required />
+      <button class="btn" type="submit">Sign in</button>
     </form>
   </div>
 );
 
 const InviteForm: FC<{ roles: string[]; defaultRole: string }> = ({ roles, defaultRole }) => (
   <section class="invite" id="invitePanel">
-    <h2>Convidar usuário temporário</h2>
+    <h2>Invite a temporary user</h2>
     <form method="post" action="/admin/invite">
-      <input type="email" name="email" placeholder="convidado@exemplo.com" required />
+      <input type="email" name="email" placeholder="invitee@example.com" required />
       <select name="role">
         {roles.map((r) => <option value={r} selected={r === defaultRole}>{r}</option>)}
       </select>
-      <button class="btn" type="submit">Criar link</button>
+      <button class="btn" type="submit">Create link</button>
     </form>
   </section>
 );
 
 // ---- Play: game slots synced from the owner's calendar (shown on the home page) ----
 
-const slotFmt = new Intl.DateTimeFormat("pt-BR", {
+const slotFmt = new Intl.DateTimeFormat("en-US", {
   weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
 });
 const whenStr = (iso: string): string => {
@@ -319,20 +329,20 @@ const SlotCard: FC<{ s: SlotView; authed: boolean; mine: boolean; big?: boolean 
         {s.location ? <span>📍 {s.location}</span> : null}
       </div>
       <div class="slot-count">
-        <span class="spots">{s.taken} jogando</span>
+        <span class="spots">{s.taken} playing</span>
       </div>
       {authed ? (
         mine ? (
           <form method="post" action={`/session/${s.id}/leave`}>
-            <button class="btn leave" type="submit">Sair</button>
+            <button class="btn leave" type="submit">Leave</button>
           </form>
         ) : (
           <form method="post" action={`/session/${s.id}/join`}>
-            <button class="btn play" type="submit">Eu vou</button>
+            <button class="btn play" type="submit">I'm in</button>
           </form>
         )
       ) : (
-        <a class="btn play" href="/auth/google">Entre para participar</a>
+        <a class="btn play" href="/auth/google">Sign in to join</a>
       )}
     </div>
   </article>
@@ -342,7 +352,7 @@ const SlotsSection: FC<{ slots: SlotView[]; authed: boolean; mine: Set<string> }
   if (slots.length === 0) return null;
   return (
     <section class="play-section">
-      <h2 class="sec">🗓 Próximas noites de jogos</h2>
+      <h2 class="sec">🗓 Upcoming game nights</h2>
       <div class="slots">{slots.map((s) => <SlotCard s={s} authed={authed} mine={mine.has(s.id)} />)}</div>
     </section>
   );
@@ -360,15 +370,15 @@ export function bookingPage(opts: { game: Game; blocks: SlotView[] }): string {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   };
   return doc(
-    <Layout title={`Jogar ${game.name}`}>
+    <Layout title={`Play ${game.name}`}>
       <div class="topbar">
-        <div class="title">🎲 Jogar {game.name}</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🎲 Play {game.name}</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play">
-        <h2 class="sec">Escolha um horário</h2>
+        <h2 class="sec">Pick a time</h2>
         {blocks.length === 0 ? (
-          <p class="note">Não há horários disponíveis no momento — o responsável ainda não publicou a disponibilidade. Volte em breve.</p>
+          <p class="note">No times available right now — the owner hasn't published availability yet. Check back soon.</p>
         ) : (
           <div class="slots">
             {blocks.map((b) => (
@@ -377,9 +387,9 @@ export function bookingPage(opts: { game: Game; blocks: SlotView[] }): string {
                   <div class="slot-meta"><span>🗓 {whenStr(b.start)}</span>{b.location ? <span>📍 {b.location}</span> : null}</div>
                   <form method="post" action={`/game/${game.id}/book`} class="join">
                     <input type="hidden" name="blockId" value={b.id} />
-                    <label class="note">Início<input type="datetime-local" name="start" value={toLocal(b.start)} required /></label>
-                    <label class="note">Minutos<input type="number" name="durationMin" value={String(dur)} min="15" step="15" required /></label>
-                    <button class="btn play" type="submit">Reservar este horário</button>
+                    <label class="note">Start<input type="datetime-local" name="start" value={toLocal(b.start)} required /></label>
+                    <label class="note">Minutes<input type="number" name="durationMin" value={String(dur)} min="15" step="15" required /></label>
+                    <button class="btn play" type="submit">Book this slot</button>
                   </form>
                 </div>
               </article>
@@ -396,7 +406,7 @@ const FilterChoice: FC<{ id: string; label: string; options: { value: string; la
   return (
     <fieldset id={id} class={`filter-choice${searchable ? " filter-choice-long" : ""}`}>
       <legend>{label}</legend>
-      {searchable ? <input class="choice-search" type="search" placeholder={`Buscar ${label.toLowerCase()}…`} aria-label={`Buscar ${label.toLowerCase()}`} autocomplete="off" /> : null}
+      {searchable ? <input class="choice-search" type="search" placeholder={`Find ${label.toLowerCase()}…`} aria-label={`Search ${label.toLowerCase()}`} autocomplete="off" /> : null}
       <div class="choice-options" data-filter-options={searchable ? "" : undefined}>
         {options.map((option, index) => (
           <label>
@@ -426,70 +436,70 @@ const CollectionTools: FC<{ groups: GameGroup[]; canFilterSale: boolean }> = ({ 
   const maxPlayers = Math.max(0, ...games.map((game) => game.facts?.maxPlayers ?? 0));
 
   return (
-    <section class="collection-tools" aria-label="Buscar e filtrar jogos">
+    <section class="collection-tools" aria-label="Search and filter games">
       <div class="collection-bar">
         <div id="search-shell" class="search-shell">
-          <button id="search-open" class="search-open" type="button" aria-label="Buscar" aria-expanded="false">
+          <button id="search-open" class="search-open" type="button" aria-label="Search" aria-expanded="false">
             <span class="mag" aria-hidden="true">⌕</span>
-            <span id="game-results" class="search-metric" aria-live="polite">{groups.length} {groups.length === 1 ? "jogo" : "jogos"}</span>
+            <span id="game-results" class="search-metric" aria-live="polite">{groups.length} {groups.length === 1 ? "game" : "games"}</span>
           </button>
           <label class="search-box">
             <span class="mag" aria-hidden="true">⌕</span>
-            <input id="game-search" type="search" placeholder="Buscar jogos ou categorias…" autocomplete="off" />
-            <button id="search-close" class="search-close" type="button" aria-label="Fechar busca">✕</button>
+            <input id="game-search" type="search" placeholder="Search games or categories…" autocomplete="off" />
+            <button id="search-close" class="search-close" type="button" aria-label="Close search">✕</button>
           </label>
           <button id="filter-toggle" class="btn filter-toggle" type="button" aria-controls="filter-panel" aria-expanded="false">
-            Ordenar e filtrar <span id="filter-count" class="filter-count" hidden>0</span>
+            Sort & filter <span id="filter-count" class="filter-count" hidden>0</span>
           </button>
         </div>
       </div>
       <div id="filter-backdrop" class="filter-backdrop" hidden></div>
       <div id="filter-panel" class="filter-panel" role="dialog" aria-modal="true" aria-labelledby="filter-title" hidden>
         <div class="filter-head">
-          <strong id="filter-title">Ordenar e filtrar</strong>
+          <strong id="filter-title">Sort & filter</strong>
           <div class="filter-head-actions">
-            <button id="clear-panel-filters" type="button">Limpar filtros</button>
-            <button id="filter-close" type="button" aria-label="Fechar ordenação e filtros">✕</button>
+            <button id="clear-panel-filters" type="button">Clear filters</button>
+            <button id="filter-close" type="button" aria-label="Close sort & filter">✕</button>
           </div>
         </div>
         <div class="filter-panel-body">
           <fieldset id="game-sort" class="sort-section">
-            <legend class="zone-title"><span class="zone-icon" aria-hidden="true">↕</span><strong>Ordenação</strong><small>Altera a ordem dos resultados</small></legend>
+            <legend class="zone-title"><span class="zone-icon" aria-hidden="true">↕</span><strong>Sort</strong><small>Changes the order of results</small></legend>
             <div class="sort-options">
               {[
-                ["newest", "Mais recentes"],
-                ["name", "Nome A–Z"],
-                ["playtime-asc", "Menor duração"],
-                ["playtime-desc", "Maior duração"],
+                ["newest", "Newest"],
+                ["name", "Name A–Z"],
+                ["playtime-asc", "Shortest playtime"],
+                ["playtime-desc", "Longest playtime"],
               ].map(([value, label], index) => (
                 <label><input type="radio" name="game-sort" value={value} checked={index === 0} /><span>{label}</span></label>
               ))}
             </div>
           </fieldset>
-          <div class="filter-section-head"><span class="zone-icon" aria-hidden="true">◇</span><strong>Filtros</strong><small>Refina os resultados</small></div>
+          <div class="filter-section-head"><span class="zone-icon" aria-hidden="true">◇</span><strong>Filters</strong><small>Refines the results</small></div>
           <div class="filter-grid">
-          <FilterChoice id="game-type" label="Tipo" options={[{ value: "", label: "Todos" }, ...types.map((type) => ({ value: type.toLowerCase(), label: type }))]} />
-          <FilterChoice id="game-category" label="Sua categoria" options={[{ value: "", label: "Todos" }, ...categories.map((category) => ({ value: category.toLowerCase(), label: category }))]} />
-          {providerCategories.length ? <FilterChoice id="game-provider-category" label="Categoria do provedor" options={[{ value: "", label: "Todos" }, ...providerCategories.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
-          <FilterChoice id="game-playtime" label="Duração" options={[{ value: "", label: "Qualquer" }, { value: "30", label: "≤ 30m" }, { value: "60", label: "31–60m" }, { value: "120", label: "61–120m" }, { value: "121", label: "2h+" }]} />
-          {maxPlayers ? <FilterChoice id="game-players" label="Jogadores" options={[{ value: "", label: "Qualquer" }, ...["1", "2", "3", "4", "4+", "8+", "12+"].map((value) => ({ value, label: value }))]} /> : null}
-          <FilterChoice id="game-complexity" label="Complexidade" options={[{ value: "", label: "Qualquer" }, { value: "2", label: "≤ 2" }, { value: "3", label: "2–3" }, { value: "4", label: "3–4" }, { value: "5", label: "4+" }]} />
-          <FilterChoice id="game-rating" label="Avaliação" options={[{ value: "", label: "Qualquer" }, { value: "6", label: "6+" }, { value: "7", label: "7+" }, { value: "8", label: "8+" }, { value: "9", label: "9+" }]} />
-          {years.length ? <FilterChoice id="game-year" label="Publicação" options={[{ value: "", label: "Qualquer" }, ...years.map((year) => ({ value: String(year), label: String(year) }))]} /> : null}
-          {mechanics.length ? <FilterChoice id="game-mechanic" label="Mecânica" options={[{ value: "", label: "Todos" }, ...mechanics.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
-          {designers.length ? <FilterChoice id="game-designer" label="Designer" options={[{ value: "", label: "Todos" }, ...designers.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
-          {publishers.length ? <FilterChoice id="game-publisher" label="Editora" options={[{ value: "", label: "Todos" }, ...publishers.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
-          {languageDependencies.length ? <FilterChoice id="game-language-dependency" label="Dependência de idioma" options={[{ value: "", label: "Todos" }, ...languageDependencies.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
-          <FilterChoice id="game-played" label="Jogado" options={[{ value: "", label: "Qualquer" }, { value: "yes", label: "Jogado" }, { value: "no", label: "Não jogado" }, { value: "unknown", label: "Não informado" }]} />
-          {languages.length ? <FilterChoice id="game-language" label="Idioma" options={[{ value: "", label: "Todos" }, ...languages.map((language) => ({ value: language.toLowerCase(), label: language }))]} /> : null}
-          {canFilterSale ? <FilterChoice id="game-sale" label="Disponibilidade" options={[{ value: "", label: "Todos" }, { value: "yes", label: "À venda" }]} /> : null}
-          <FilterChoice id="game-parted" label="Coleção" options={[{ value: "", label: "Todos" }, { value: "keep", label: "Na coleção" }, { value: "parted", label: "Fora da coleção" }]} />
+          <FilterChoice id="game-type" label="Type" options={[{ value: "", label: "All" }, ...types.map((type) => ({ value: type.toLowerCase(), label: type }))]} />
+          <FilterChoice id="game-category" label="Your category" options={[{ value: "", label: "All" }, ...categories.map((category) => ({ value: category.toLowerCase(), label: category }))]} />
+          {providerCategories.length ? <FilterChoice id="game-provider-category" label="Provider category" options={[{ value: "", label: "All" }, ...providerCategories.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
+          <FilterChoice id="game-playtime" label="Playtime" options={[{ value: "", label: "Any" }, { value: "30", label: "≤ 30m" }, { value: "60", label: "31–60m" }, { value: "120", label: "61–120m" }, { value: "121", label: "2h+" }]} />
+          {maxPlayers ? <FilterChoice id="game-players" label="Players" options={[{ value: "", label: "Any" }, ...["1", "2", "3", "4", "4+", "8+", "12+"].map((value) => ({ value, label: value }))]} /> : null}
+          <FilterChoice id="game-complexity" label="Complexity" options={[{ value: "", label: "Any" }, { value: "2", label: "≤ 2" }, { value: "3", label: "2–3" }, { value: "4", label: "3–4" }, { value: "5", label: "4+" }]} />
+          <FilterChoice id="game-rating" label="Rating" options={[{ value: "", label: "Any" }, { value: "6", label: "6+" }, { value: "7", label: "7+" }, { value: "8", label: "8+" }, { value: "9", label: "9+" }]} />
+          {years.length ? <FilterChoice id="game-year" label="Published" options={[{ value: "", label: "Any" }, ...years.map((year) => ({ value: String(year), label: String(year) }))]} /> : null}
+          {mechanics.length ? <FilterChoice id="game-mechanic" label="Mechanic" options={[{ value: "", label: "All" }, ...mechanics.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
+          {designers.length ? <FilterChoice id="game-designer" label="Designer" options={[{ value: "", label: "All" }, ...designers.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
+          {publishers.length ? <FilterChoice id="game-publisher" label="Publisher" options={[{ value: "", label: "All" }, ...publishers.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
+          {languageDependencies.length ? <FilterChoice id="game-language-dependency" label="Language dependency" options={[{ value: "", label: "All" }, ...languageDependencies.map((value) => ({ value: value.toLowerCase(), label: value }))]} /> : null}
+          <FilterChoice id="game-played" label="Played" options={[{ value: "", label: "Any" }, { value: "yes", label: "Played" }, { value: "no", label: "Not played" }, { value: "unknown", label: "Unknown" }]} />
+          {languages.length ? <FilterChoice id="game-language" label="Language" options={[{ value: "", label: "All" }, ...languages.map((language) => ({ value: language.toLowerCase(), label: language }))]} /> : null}
+          {canFilterSale ? <FilterChoice id="game-sale" label="Availability" options={[{ value: "", label: "All" }, { value: "yes", label: "For sale" }]} /> : null}
+          <FilterChoice id="game-parted" label="Collection" options={[{ value: "", label: "All" }, { value: "keep", label: "In the collection" }, { value: "parted", label: "Out of the collection" }]} />
           </div>
         </div>
       </div>
       <div class="filter-status">
         <div id="filter-chips" class="filter-chips"></div>
-        <button id="clear-filters" type="button" hidden>Limpar tudo</button>
+        <button id="clear-filters" type="button" hidden>Clear all</button>
       </div>
     </section>
   );
@@ -528,13 +538,13 @@ export function collectionPage(opts: {
     : undefined;
 
   return doc(
-    <Layout title="Coleção de jogos de tabuleiro" bodyClass={view === "spine" ? "view-spine" : undefined}>
+    <Layout title="Board game collection" bodyClass={view === "spine" ? "view-spine" : undefined}>
       <div class="topbar collection-topbar">
         <div class="right">
-          <button id="view-toggle" class="view-toggle" type="button" aria-pressed="false" aria-label="Alternar estante e lombadas" title="Alternar estante e lombadas">⇄</button>
-          <span class="view-toggle-label" aria-hidden="true">trocar visualização</span>
+          <button id="view-toggle" class="view-toggle" type="button" aria-pressed="false" aria-label="Toggle shelf and spine views" title="Toggle shelf and spine views">⇄</button>
+          <span class="view-toggle-label" aria-hidden="true">switch view</span>
           {perm.admin ? (
-            <a class="btn" href="/admin/requests">Solicitações</a>
+            <a class="btn" href="/admin/requests">Requests</a>
           ) : null}
           {perm.admin ? (
             <a
@@ -542,7 +552,7 @@ export function collectionPage(opts: {
               href="#invitePanel"
               onclick="document.getElementById('invitePanel').classList.toggle('open');return false"
             >
-              Convidar
+              Invite
             </a>
           ) : null}
           {isAuthed ? (
@@ -550,9 +560,9 @@ export function collectionPage(opts: {
               <span class="badge">
                 {perm.name ?? email}
                 {perm.roles.length ? " · " + perm.roles.join(", ") : ""}
-                {isTemp ? " · convidado" : ""}
+                {isTemp ? " · guest" : ""}
               </span>
-              <a class="btn" href="/auth/logout">Sair</a>
+              <a class="btn" href="/auth/logout">Sign out</a>
             </>
           ) : null}
         </div>
@@ -561,17 +571,17 @@ export function collectionPage(opts: {
       <SlotsSection slots={slots} authed={isAuthed} mine={mineSlots} />
       <div class="shelf" style={shelfStyle}>{groups.map((grp) => <Box grp={grp} perm={perm} />)}</div>
       <div class="spines">{groups.map((grp) => <Spine grp={grp} />)}</div>
-      <div id="filter-empty" class="filter-empty" hidden><b>Nenhum jogo encontrado</b><span>Tente limpar um filtro ou buscar outra coisa.</span></div>
+      <div id="filter-empty" class="filter-empty" hidden><b>No games found</b><span>Try clearing a filter or searching for something else.</span></div>
       {active ? <Detail grp={active} perm={perm} whatsapp={whatsapp} open /> : null}
       {perm.admin ? <InviteForm roles={roles} defaultRole={defaultRole} /> : null}
       {!isAuthed && !showLogin ? (
-        <a href="/login" class="lock" title="Entrar" aria-label="Entrar">🔒</a>
+        <a href="/login" class="lock" title="Sign in" aria-label="Sign in">🔒</a>
       ) : null}
       {showLogin ? <LoginModal error={login?.error} /> : null}
       <script
         dangerouslySetInnerHTML={{
           __html: `
-            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;var urlView=${view ? "'" + view + "'" : "null"};function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.title=spine?'Ver como estante':'Ver como lombadas';}if(!localStorage.getItem('viewToggleSeen'))vt.classList.add('hint');var initial=urlView||localStorage.getItem('gameView')||'shelf';if(urlView)localStorage.setItem('gameView',urlView);apply(initial);vt.addEventListener('click',function(){vt.classList.remove('hint');localStorage.setItem('viewToggleSeen','1');var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);history.replaceState(null,'','/'+v);});})();
+            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;var urlView=${view ? "'" + view + "'" : "null"};function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.title=spine?'View as shelf':'View as spines';}if(!localStorage.getItem('viewToggleSeen'))vt.classList.add('hint');var initial=urlView||localStorage.getItem('gameView')||'shelf';if(urlView)localStorage.setItem('gameView',urlView);apply(initial);vt.addEventListener('click',function(){vt.classList.remove('hint');localStorage.setItem('viewToggleSeen','1');var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);});})();
             var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf');
             var spinesEl=document.querySelector('.spines'),spineById={};if(spinesEl)Array.from(spinesEl.querySelectorAll('.spine')).forEach(function(s){spineById[s.dataset.id]=s;});function spineOf(b){return spineById[b.dataset.id];}
             boxes.forEach(function(b){if(b.classList.contains('sized'))return;var i=b.querySelector('img');if(!i)return;var size=function(){if(i.naturalWidth)b.style.aspectRatio=i.naturalWidth+'/'+i.naturalHeight;};i.complete?size():i.addEventListener('load',size);});
@@ -602,7 +612,7 @@ export function collectionPage(opts: {
             function applyFilters(){
               var values=getValues(),sortValue=sort.querySelector('input:checked').value,visible=boxes.filter(function(b){var show=matchesBox(b,values);b.hidden=!show;var s=spineOf(b);if(s)s.hidden=!show;return show;});
               visible.sort(function(a,b){if(sortValue==='name')return a.dataset.name.localeCompare(b.dataset.name);var av=Number(sortValue==='newest'?a.dataset.purchased:a.dataset.playtime)||0,bv=Number(sortValue==='newest'?b.dataset.purchased:b.dataset.playtime)||0;return sortValue==='playtime-asc'?(av||Infinity)-(bv||Infinity):bv-av;}).forEach(function(b){shelf.appendChild(b);var s=spineOf(b);if(s&&spinesEl)spinesEl.appendChild(s);});
-              updateFacets(values);optionSearches.forEach(filterOptions);var active=Object.keys(values).filter(function(k){return values[k];});results.textContent=visible.length+(visible.length===1?' jogo':' jogos');empty.hidden=visible.length!==0;clear.hidden=active.length===0;count.hidden=active.length===0;count.textContent=String(active.length);
+              updateFacets(values);optionSearches.forEach(filterOptions);var active=Object.keys(values).filter(function(k){return values[k];});results.textContent=visible.length+(visible.length===1?' game':' games');empty.hidden=visible.length!==0;clear.hidden=active.length===0;count.hidden=active.length===0;count.textContent=String(active.length);
               chips.replaceChildren();active.forEach(function(k){var control=controls[k],input=control.matches('fieldset')?control.querySelector('input:checked'):control,label=k==='search'?'“'+input.value+'”':input.nextElementSibling.dataset.filterLabel;var chip=document.createElement('button');chip.type='button';chip.textContent=label+' ×';chip.onclick=function(){if(control.matches('fieldset'))control.querySelector('.choice-options input').checked=true;else control.value='';applyFilters();};chips.appendChild(chip);});
             }
             function clearFilters(){Object.keys(controls).forEach(function(k){var c=controls[k];if(!c)return;if(c.matches('fieldset'))c.querySelector('.choice-options input').checked=true;else c.value='';});resetOptionSearches();applyFilters();}
@@ -610,7 +620,7 @@ export function collectionPage(opts: {
             panel.addEventListener('pointerdown',rememberChecked);panel.addEventListener('keydown',trapPanelFocus);panel.addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter')rememberChecked(e);});
             panel.addEventListener('click',function(e){var label=e.target.closest('.choice-options label');if(!label)return;var wasChecked=label.dataset.wasChecked==='true';delete label.dataset.wasChecked;var radio=label.querySelector('input');if(wasChecked&&radio.value){e.preventDefault();label.closest('fieldset').querySelector('.choice-options input').checked=true;applyFilters();}});
             Object.keys(controls).forEach(function(k){if(controls[k])controls[k].addEventListener(k==='search'?'input':'change',applyFilters);});sort.addEventListener('change',applyFilters);clear.addEventListener('click',clearFilters);panelClear.addEventListener('click',clearFilters);applyFilters();
-            document.addEventListener('click',function(e){var more=e.target.closest('[data-video-more]');if(more){var section=more.closest('[data-video-section]'),hidden=Array.from(section.querySelectorAll('[data-video-extra][hidden]'));hidden.slice(0,6).forEach(function(card){card.hidden=false;});var left=Math.max(0,hidden.length-6);more.hidden=left===0;more.textContent='Carregar mais '+Math.min(6,left);more.setAttribute('aria-expanded','true');return;}var t=e.target.closest('.tabs button');if(t){var h=t.closest('.hub-inner'),n=t.getAttribute('data-t');h.querySelectorAll('.tabs button').forEach(function(b){var active=b.getAttribute('data-t')===n;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});h.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-p')===n);});var sc=h.closest('.hub');if(sc)sc.scrollTop=0;}});
+            document.addEventListener('click',function(e){var more=e.target.closest('[data-video-more]');if(more){var section=more.closest('[data-video-section]'),hidden=Array.from(section.querySelectorAll('[data-video-extra][hidden]'));hidden.slice(0,6).forEach(function(card){card.hidden=false;});var left=Math.max(0,hidden.length-6);more.hidden=left===0;more.textContent='Load '+Math.min(6,left)+' more';more.setAttribute('aria-expanded','true');return;}var t=e.target.closest('.tabs button');if(t){var h=t.closest('.hub-inner'),n=t.getAttribute('data-t');h.querySelectorAll('.tabs button').forEach(function(b){var active=b.getAttribute('data-t')===n;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});h.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('active',p.getAttribute('data-p')===n);});var sc=h.closest('.hub');if(sc)sc.scrollTop=0;}});
           `,
         }}
       ></script>
@@ -621,10 +631,10 @@ export function collectionPage(opts: {
 export function slotPage(opts: { slot: SlotView; authed: boolean; mine: boolean }): string {
   const { slot, authed, mine } = opts;
   return doc(
-    <Layout title={slot.gameName ?? "Sessão"}>
+    <Layout title={slot.gameName ?? "Session"}>
       <div class="topbar">
-        <div class="title">🗓 {slot.gameName ?? "Noite de jogos"}</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🗓 {slot.gameName ?? "Game night"}</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play one">
         <div class="slots">
@@ -637,26 +647,26 @@ export function slotPage(opts: { slot: SlotView; authed: boolean; mine: boolean 
 
 export function requestSentPage(opts: { phone: string; ownerWa: string; approved: boolean }): string {
   const { phone, ownerWa, approved } = opts;
-  const text = encodeURIComponent(`Olá! Gostaria de jogar um jogo de tabuleiro. Meu WhatsApp: ${phone}`);
+  const text = encodeURIComponent(`Hi! I'd like to play a board game. My WhatsApp: ${phone}`);
   return doc(
-    <Layout title={approved ? "Você entrou" : "Solicitação enviada"}>
+    <Layout title={approved ? "You're in" : "Request sent"}>
       <div class="topbar">
-        <div class="title">🎲 {approved ? "Você entrou" : "Solicitação enviada"}</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🎲 {approved ? "You're in" : "Request sent"}</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play one">
         <div class="notice">
           {approved ? (
             <>
-              <h2>Sua solicitação foi aprovada 🎉</h2>
-              <p class="note">Agora você pode participar de qualquer noite de jogos.</p>
-              <a class="btn play" href="/">Ver os horários</a>
+              <h2>Your request was approved 🎉</h2>
+              <p class="note">You can now join any game night.</p>
+              <a class="btn play" href="/">View the schedule</a>
             </>
           ) : (
             <>
-              <h2>Solicitação recebida</h2>
-              <p class="note">O responsável aprovará sua solicitação em breve. Toque abaixo para avisá-lo pelo WhatsApp agora.</p>
-              {ownerWa ? <a class="btn play" href={`https://wa.me/${ownerWa}?text=${text}`} target="_blank" rel="noopener">Falar com o responsável</a> : null}
+              <h2>Request received</h2>
+              <p class="note">The owner will approve your request shortly. Tap below to notify them on WhatsApp now.</p>
+              {ownerWa ? <a class="btn play" href={`https://wa.me/${ownerWa}?text=${text}`} target="_blank" rel="noopener">Message the owner</a> : null}
             </>
           )}
         </div>
@@ -670,48 +680,48 @@ export function membersAdminPage(opts: { members: Member[] }): string {
   const pending = members.filter((m) => m.status === "pending");
   const others = members.filter((m) => m.status !== "pending");
   return doc(
-    <Layout title="Solicitações de acesso">
+    <Layout title="Access requests">
       <div class="topbar">
-        <div class="title">🎲 Solicitações de acesso</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🎲 Access requests</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play">
-        <h2 class="sec">Pendentes ({pending.length})</h2>
-        {pending.length === 0 ? <p class="note">Nenhuma solicitação pendente.</p> : null}
+        <h2 class="sec">Pending ({pending.length})</h2>
+        {pending.length === 0 ? <p class="note">No pending requests.</p> : null}
         {pending.map((m) => (
           <div class="req">
             <div class="req-info">
-              <b>{m.name ?? "Alguém"}</b>
+              <b>{m.name ?? "Someone"}</b>
               <span class="note">✉️ {m.email}</span>
             </div>
             <div class="req-actions">
               <form method="post" action="/admin/requests/approve">
                 <input type="hidden" name="email" value={m.email} />
-                <button class="btn play" type="submit">Aprovar</button>
+                <button class="btn play" type="submit">Approve</button>
               </form>
               <form method="post" action="/admin/requests/deny">
                 <input type="hidden" name="email" value={m.email} />
-                <button class="btn leave" type="submit">Negar</button>
+                <button class="btn leave" type="submit">Deny</button>
               </form>
             </div>
           </div>
         ))}
-        <h2 class="sec">Aprovados e negados</h2>
+        <h2 class="sec">Approved and denied</h2>
         {others.map((m) => (
           <div class="req">
             <div class="req-info">
               <b>{m.name ?? m.email}</b>
-              <span class="note">✉️ {m.email} · {m.status === "approved" ? "aprovado" : "negado"}</span>
+              <span class="note">✉️ {m.email} · {m.status === "approved" ? "approved" : "denied"}</span>
             </div>
             {m.status === "approved" ? (
               <form method="post" action="/admin/requests/deny">
                 <input type="hidden" name="email" value={m.email} />
-                <button class="btn leave" type="submit">Revogar</button>
+                <button class="btn leave" type="submit">Revoke</button>
               </form>
             ) : (
               <form method="post" action="/admin/requests/approve">
                 <input type="hidden" name="email" value={m.email} />
-                <button class="btn play" type="submit">Permitir</button>
+                <button class="btn play" type="submit">Allow</button>
               </form>
             )}
           </div>
@@ -723,16 +733,16 @@ export function membersAdminPage(opts: { members: Member[] }): string {
 
 export function pendingPage(opts: { name?: string }): string {
   return doc(
-    <Layout title="Aguardando aprovação">
+    <Layout title="Awaiting approval">
       <div class="topbar">
-        <div class="title">🎲 Quase lá</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🎲 Almost there</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play one">
         <div class="notice">
-          <h2>Olá{opts.name ? `, ${opts.name}` : ""} 👋</h2>
-          <p class="note">Você entrou com o Google. O responsável foi avisado e aprovará sua solicitação em breve — depois disso, você poderá participar das noites de jogos. Esta página liberará seu acesso assim que ela for aprovada.</p>
-          <a class="btn play" href="/">Verificar novamente</a>
+          <h2>Hi{opts.name ? `, ${opts.name}` : ""} 👋</h2>
+          <p class="note">You signed in with Google. The owner has been notified and will approve your request soon — after that you can join game nights. This page will grant access as soon as it's approved.</p>
+          <a class="btn play" href="/">Check again</a>
         </div>
       </main>
     </Layout>,
@@ -741,15 +751,15 @@ export function pendingPage(opts: { name?: string }): string {
 
 export function deniedPage(): string {
   return doc(
-    <Layout title="Sem acesso">
+    <Layout title="No access">
       <div class="topbar">
-        <div class="title">🎲 Jogos de tabuleiro</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🎲 Board games</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play one">
         <div class="notice">
-          <h2>Acesso não concedido</h2>
-          <p class="note">Sua conta não tem acesso. Se você acha que isso é um engano, fale com o responsável.</p>
+          <h2>Access not granted</h2>
+          <p class="note">Your account doesn't have access. If you think this is a mistake, contact the owner.</p>
         </div>
       </main>
     </Layout>,
@@ -760,8 +770,8 @@ export function noticePage(opts: { title: string; message: string }): string {
   return doc(
     <Layout title={opts.title}>
       <div class="topbar">
-        <div class="title">🎲 Jogos de tabuleiro</div>
-        <a class="btn" href="/">Início</a>
+        <div class="title">🎲 Board games</div>
+        <a class="btn" href="/">Home</a>
       </div>
       <main class="play one">
         <div class="notice">
@@ -776,16 +786,16 @@ export function noticePage(opts: { title: string; message: string }): string {
 export function invitePage(opts: { link: string; email: string; role: string }): string {
   const { link, email, role } = opts;
   return doc(
-    <Layout title="Convite criado">
+    <Layout title="Invite created">
       <div class="topbar">
-        <div class="title">Convite criado</div>
-        <a class="btn" href="/">← Voltar</a>
+        <div class="title">Invite created</div>
+        <a class="btn" href="/">← Back</a>
       </div>
       <div class="card">
         <div class="info">
-          <div class="name">Convite criado</div>
+          <div class="name">Invite created</div>
           <p class="note">
-            Compartilhe com <strong>{email}</strong> (perfil <strong>{role}</strong>). Não expira.
+            Share with <strong>{email}</strong> (profile <strong>{role}</strong>). It does not expire.
           </p>
           <input
             class="note"
