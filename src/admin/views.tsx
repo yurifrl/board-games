@@ -6,11 +6,10 @@ import type { Candidate } from "../asset/studio.ts";
 import { displayKey, isManaged } from "../asset/studio.ts";
 import { boxArtKey } from "../asset/box-contract.ts";
 import { sign } from "../asset/auth.ts";
+import type { ImageModel } from "./models.ts";
 
 export type Studio = { game: Game; front: Candidate[]; spine: Candidate[] };
-export type GenProvider = "openai" | "google";
-export type Opts = { gcs: boolean; providers: GenProvider[]; obsidian: boolean };
-const PROVIDER_LABEL: Record<GenProvider, string> = { openai: "OpenAI", google: "Gemini" };
+export type Opts = { gcs: boolean; gen: boolean; models: ImageModel[]; defaultModel: string; obsidian: boolean };
 
 // Which source group a provider belongs to (drives the section toggle).
 // Downloaded covers group PER SOURCE (bgg / ludopedia), not as one bucket —
@@ -113,16 +112,20 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
           <span class="managednote" hidden>⇣ auto-downloaded (sync) — cannot be deleted; use ⬇ Download covers to refresh</span>
         </div>
       </div>
-      {opts.providers.length > 0 ? (
+      {opts.gen ? (
         <aside class="side">
           <div class="gptitle">Generate {face === "front" ? "front" : "spine"}</div>
           <form method="post" action={`/studio/${g.id}/${face}/generate`}>
             <textarea name="prompt" class="prompt" rows={8} placeholder="loading default prompt…"></textarea>
             <div class="gpcontrols">
-              {opts.providers.length > 1 ? (
-                <select name="provider" class="provsel">{opts.providers.map((p) => <option value={p}>{PROVIDER_LABEL[p]}</option>)}</select>
+              {opts.models.length > 1 ? (
+                <select name="model" class="provsel" title="OpenRouter image models">
+                  {opts.models.map((m) => (
+                    <option value={m.id} selected={m.id === opts.defaultModel}>{m.name}</option>
+                  ))}
+                </select>
               ) : (
-                <input type="hidden" name="provider" value={opts.providers[0]} />
+                <input type="hidden" name="model" value={opts.models[0]?.id ?? opts.defaultModel} />
               )}
               <span class="gpaspect">automatic aspect ratio</span>
               <button type="submit" class="gengo">Generate</button>
@@ -156,12 +159,12 @@ const Tile: FC<{ g: Game; opts: Opts; active?: Studio }> = ({ g, opts, active })
         </span>
       </a>
       {active ? (
-        <div class="detail open" data-id={g.id} data-face="front">
+        <div class="detail open" data-id={g.id} data-face="spine">
           <div class="dhead">
             <b>{g.name}</b>
             <div class="facetabs">
-              <button type="button" data-f="front" class="on">Front</button>
-              <button type="button" data-f="spine">Spine</button>
+              <button type="button" data-f="front">Front</button>
+              <button type="button" data-f="spine" class="on">Spine</button>
             </div>
             <form method="post" action={`/studio/${g.id}/download`} class="dlform"><button type="submit" class="dlbtn" title="Re-download BGG/Ludopedia covers">⬇ Download covers</button></form>
             <a class="close" href="/" title="Close">✕</a>
@@ -204,10 +207,10 @@ export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =
             <button data-v="both" class="on">Both</button>
           </div>
           <input id="q" type="search" placeholder="filter games…" />
-          {opts.providers.length > 0 ? <button id="selBtn" class="gstyle">Select</button> : null}
+          {opts.gen ? <button id="selBtn" class="gstyle">Select</button> : null}
           {opts.obsidian ? <button id="globalStyleBtn" class="gstyle">Global style</button> : null}
         </header>
-        {opts.providers.length > 0 ? (
+        {opts.gen ? (
           <div id="bulkbar">
             <input id="pat" type="text" placeholder="regex to match (e.g. ^cat|arcs)" />
             <button type="button" id="patGo">Match</button>
@@ -217,10 +220,7 @@ export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =
               <option value="spine">Spine</option>
               <option value="both">Both</option>
             </select>
-            {opts.providers.length > 1 ? (
-              <select id="bulkProv">{opts.providers.map((p) => <option value={p}>{PROVIDER_LABEL[p]}</option>)}</select>
-            ) : null}
-            <button type="button" id="bulkGo" class="gengo">Gerar</button>
+            <button type="button" id="bulkGo" class="gengo">Generate</button>
             <button type="button" id="bulkDl">⬇ Download</button>
             <span id="bulkProg"></span>
           </div>
@@ -451,9 +451,7 @@ function bulkCount(){var el=document.getElementById('selCount');if(el)el.textCon
   }
   if(go)go.onclick=function(){
     var face=document.getElementById('bulkFace').value;
-    var pv=document.getElementById('bulkProv');var provider=pv?pv.value:'';
-    var extra={face:face};if(provider)extra.provider=provider;
-    runBulk('/bulk/generate',extra);
+    runBulk('/bulk/generate',{face:face});
   };
   if(dl)dl.onclick=function(){runBulk('/bulk/download',{});};
 })();

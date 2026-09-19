@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { GenBoxArtSource, buildGenSources, themeHint, facePrompt } from "./box-art.ts";
+import { GenBoxArtSource, buildGenSources, themeHint, facePrompt, openrouterImageGen } from "./box-art.ts";
 import { aspectRatioFor, boxArtKey, STYLE_VERSION } from "../box-contract.ts";
 import type { Entity } from "../types.ts";
 
@@ -51,4 +51,54 @@ test("source is inert without an ImageGen, and discovers one asset with one", as
 test("buildGenSources yields both faces when configured", () => {
   const sources = buildGenSources({ gen: async () => new Uint8Array() });
   expect(sources.map((s) => s.kind)).toEqual(["front", "spine"]);
+});
+
+test("buildGenSources yields both faces from an apiKey alone", () => {
+  expect(buildGenSources({ apiKey: "k" }).map((s) => s.kind)).toEqual(["front", "spine"]);
+});
+
+/** Swap global fetch for the duration of `run` (tests must never hit the network). */
+async function withFetch(impl: typeof fetch, run: () => Promise<void>): Promise<void> {
+  const orig = globalThis.fetch;
+  globalThis.fetch = impl;
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = orig;
+  }
+}
+
+test("openrouterImageGen posts the Image API shape and decodes the b64 png", async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  await withFetch(async (url, init) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return new Response(JSON.stringify({ data: [{ b64_json: "AAAA", media_type: "image/png" }] }), { status: 200 });
+  }, async () => {
+    const bytes = await openrouterImageGen("or-key", "google/gemini-2.5-flash-image")("a cozy front", "2:3");
+    expect(bytes).toEqual(new Uint8Array([0, 0, 0])); // "AAAA" → 00 00 00
+  });
+  expect(calls.length).toBe(1);
+  expect(calls[0].url).toBe("https://openrouter.ai/api/v1/images");
+  expect(new Headers(calls[0].init.headers).get("Authorization")).toBe("Bearer or-key");
+  expect(JSON.parse(String(calls[0].init.body))).toEqual({
+    model: "google/gemini-2.5-flash-image",
+    prompt: "a cozy front",
+    aspect_ratio: "2:3",
+    output_format: "png",
+  });
+});
+
+test("openrouterImageGen maps 429 to SourceUnavailableError", async () => {
+  await withFetch(async () => new Response("rate limited", { status: 429 }), async () => {
+    await expect(openrouterImageGen("k", "m")("p", "1:1")).rejects.toThrow("openrouter image rate-limited (429)");
+  });
+});
+
+test("openrouterImageGen surfaces the API error message with the status", async () => {
+  await withFetch(
+    async () => new Response(JSON.stringify({ error: { message: "Insufficient credits" } }), { status: 402 }),
+    async () => {
+      await expect(openrouterImageGen("k", "m")("p", "1:1")).rejects.toThrow("openrouter image 402: Insufficient credits");
+    },
+  );
 });

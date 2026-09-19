@@ -7,7 +7,7 @@
  *   chosen:     <id>/display/<format>/latest.<ext>          (what the app shows)
  *
  * where format = "front" | "spine" (a Face), provider is uniform across every
- * source ("upload" | "openai" | "google" | "ludopedia" | "bgg"), and version is
+ * source ("upload" | "openai" | "google" | "openrouter" | "ludopedia" | "bgg"), and version is
  * an epoch-ms timestamp so a format's history accumulates instead of
  * overwriting. Promote copies a candidate's bytes onto the stable `latest`
  * slot (a real standalone object, so Obsidian can embed a URL that never
@@ -23,7 +23,7 @@ import type { AssetBlob } from "./types.ts";
 import { readFile } from "node:fs/promises";
 import { writeJsonAtomic } from "../store.ts";
 
-export type Provider = "upload" | "openai" | "google" | "ludopedia" | "bgg";
+export type Provider = "upload" | "openai" | "google" | "openrouter" | "ludopedia" | "bgg";
 
 /** Pipeline-managed sources: the worker re-pulls these on every sync cycle, so
  * an admin delete is futile (the cover returns within minutes). The UI locks

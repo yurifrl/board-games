@@ -192,6 +192,40 @@ export function geminiImageGen(apiKey: string, model = GEMINI_MODEL): ImageGen {
   };
 }
 
+/** OpenRouter Image API — one endpoint for every image-gen model it hosts. */
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/images";
+
+/** {@link ImageGen} backed by OpenRouter's Image API (OPENROUTER_API_KEY). The
+ * model is always caller-supplied (the admin studio picks from the catalog). */
+export function openrouterImageGen(apiKey: string, model: string): ImageGen {
+  return async (prompt, aspectRatio) => {
+    const res = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, prompt, aspect_ratio: aspectRatio, output_format: "png" }),
+    });
+    if (res.status === 429) throw new SourceUnavailableError(BOX_ART_SOURCE, "openrouter image rate-limited (429)");
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 200);
+      let msg = body;
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (parsed && typeof parsed === "object" && "error" in parsed) {
+          const err: unknown = parsed.error;
+          if (err && typeof err === "object" && "message" in err && typeof err.message === "string") msg = err.message;
+        }
+      } catch {
+        // not JSON — fall through with the raw body
+      }
+      throw new SourceUnavailableError(BOX_ART_SOURCE, `openrouter image ${res.status}: ${msg}`);
+    }
+    const data = await res.json();
+    const b64 = data?.data?.[0]?.b64_json;
+    if (!b64) throw new Error(`openrouter returned no image for prompt: ${prompt.slice(0, 60)}…`);
+    return Uint8Array.from(Buffer.from(b64, "base64")); // media_type is always image/png (output_format is pinned)
+  };
+}
+
 /**
  * One {@link AssetSource} per face. Registered in sources/registry.ts alongside
  * the cover sources; the pipeline fingerprints, skips unchanged, and stores.

@@ -145,6 +145,14 @@ spec:
                   name: {{ .Values.secretName }}
                   key: GEMINI_API_KEY
                   optional: true
+            # Cover Studio generation (OpenRouter Image API). The catalog
+            # endpoint is public; only generation needs the key.
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: OPENROUTER_API_KEY
+                  optional: true
             - name: OBSIDIAN_API_KEY
               valueFrom:
                 secretKeyRef:

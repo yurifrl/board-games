@@ -9,7 +9,7 @@
  */
 import type { Face } from "../box-contract.ts";
 import { aspectRatioFor, BOX_ART_FORMAT } from "../box-contract.ts";
-import { openaiImageGen, geminiImageGen, facePrompt, themeHint } from "./box-art.ts";
+import { openrouterImageGen, facePrompt, themeHint } from "./box-art.ts";
 import { loadGlobalStyle } from "./prompt-store.ts";
 import { palette as extractPalette } from "../tint.ts";
 import type { AssetService } from "../service.ts";
@@ -44,12 +44,11 @@ export async function composePrompt(service: AssetService, game: Game, face: Fac
   });
 }
 
-export type GenProvider = "openai" | "google";
-
 export interface GenerateOpts {
-  provider: GenProvider;
+  /** OPENROUTER_API_KEY. */
   apiKey: string;
-  model?: string;
+  /** An OpenRouter image-gen model id (e.g. from GET /gen/models). */
+  model: string;
   promptOverride?: string;
 }
 
@@ -62,12 +61,8 @@ export async function generateFace(
 ): Promise<AssetKey> {
   const prompt = opts.promptOverride?.trim() || (await composePrompt(service, game, face));
   const ratio = aspectRatioFor(face, game.dimensions);
-  const gen =
-    opts.provider === "google"
-      ? geminiImageGen(opts.apiKey, opts.model)
-      : openaiImageGen(opts.apiKey, opts.model);
-  const bytes = await gen(prompt, ratio);
-  const key = candidateKey(game.id, face, opts.provider, BOX_ART_FORMAT);
+  const bytes = await openrouterImageGen(opts.apiKey, opts.model)(prompt, ratio);
+  const key = candidateKey(game.id, face, "openrouter", BOX_ART_FORMAT);
   await service.putLocal(key, {
     bytes,
     contentType: `image/${BOX_ART_FORMAT}`,

@@ -16,18 +16,14 @@ import { obsidianEnabled, readGlobalStyleRaw, saveGlobalStyle, DEFAULT_GLOBAL_ST
 import type { AssetKey } from "../asset/key.ts";
 import type { Face } from "../asset/box-contract.ts";
 import { studioPage, renderFacePane } from "./views.tsx";
+import { openRouterImageModels } from "./models.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
 const DATA_DIR = env("DATA_DIR", "./data");
 const PORT = Number(env("ADMIN_PORT", "3001"));
 const GCS = !!env("ASSETS_GCS_BUCKET");
-const OPENAI = !!env("OPENAI_API_KEY");
-const GEMINI = !!env("GEMINI_API_KEY");
+const OPENROUTER = !!env("OPENROUTER_API_KEY");
 const OBSIDIAN = obsidianEnabled();
-const PROVIDERS: ("openai" | "google")[] = [
-  ...(GEMINI ? ["google" as const] : []),
-  ...(OPENAI ? ["openai" as const] : []),
-];
 
 const { service, serve, tiered, sources } = buildAssetPlatform({
   dataDir: DATA_DIR,
@@ -56,11 +52,23 @@ const extFor = (name: string, contentType: string): string => {
   return contentType === "image/png" ? "png" : contentType === "image/jpeg" ? "jpg" : "png";
 };
 
-const studioOpts = { gcs: tiered, providers: PROVIDERS, obsidian: OBSIDIAN };
+// Studio render options. OpenRouter is the only generation path; the image-model
+// catalog is TTL-cached (see models.ts) and degrades to the default model when
+// the catalog can't be fetched.
+const genOpts = async (): Promise<Opts> => {
+  const models = OPENROUTER ? await openRouterImageModels() : [];
+  return {
+    gcs: tiered,
+    gen: OPENROUTER,
+    models,
+    defaultModel: env("OPENROUTER_IMAGE_MODEL") || models[0]?.id || "",
+    obsidian: OBSIDIAN,
+  };
+};
 
 // Index: tiles only — candidate histories load per game on the detail route,
 // which is what made the old all-in-one index slow enough to need idleTimeout.
-app.get("/", async (c) => c.html(studioPage(await loadCatalog(DATA_DIR), studioOpts)));
+app.get("/", async (c) => c.html(studioPage(await loadCatalog(DATA_DIR), await genOpts())));
 
 // Per-game studio detail under its own path (shareable /studio/<id>).
 app.get("/studio/:id", async (c) => {
@@ -71,7 +79,7 @@ app.get("/studio/:id", async (c) => {
     history(service, game.id, "front"),
     history(service, game.id, "spine"),
   ]);
-  return c.html(studioPage(games, studioOpts, { game, front, spine }));
+  return c.html(studioPage(games, await genOpts(), { game, front, spine }));
 });
 
 // Global house style (Obsidian Inventory note). GET prefills the editor with the
@@ -108,7 +116,7 @@ app.get("/studio/:id/pane/:face", async (c) => {
   const game = await gameById(c.req.param("id"));
   if (!game) return c.text("not found", 404);
   const hist = await history(service, game.id, face);
-  return c.html(renderFacePane(game, face, hist, { gcs: tiered, providers: PROVIDERS, obsidian: OBSIDIAN }));
+  return c.html(renderFacePane(game, face, hist, await genOpts()));
 });
 
 app.post("/studio/:id/:face/upload", async (c) => {
@@ -136,24 +144,30 @@ app.get("/studio/:id/:face/prompt", async (c) => {
   return c.text(await composePrompt(service, game, face));
 });
 
-// Generate a face (disk-only candidate). Optional `prompt` overrides the default.
+// Generate a face via OpenRouter (disk-only candidate). Optional `prompt`
+// overrides the default; optional `model` picks from GET /gen/models.
 app.post("/studio/:id/:face/generate", async (c) => {
+  if (!OPENROUTER) return c.text("OpenRouter not configured", 503);
   const face = c.req.param("face");
   if (!isFace(face)) return c.text("bad face", 400);
   const game = await gameById(c.req.param("id"));
   if (!game) return c.text("not found", 404);
   const form = await c.req.parseBody();
   const prompt = String(form["prompt"] ?? "");
-  const provider = String(form["provider"] ?? PROVIDERS[0] ?? "") as "openai" | "google";
-  if (!PROVIDERS.includes(provider)) return c.text("no generation provider configured", 503);
-  const apiKey = provider === "google" ? env("GEMINI_API_KEY") : env("OPENAI_API_KEY");
-  const model = provider === "google" ? env("GEMINI_IMAGE_MODEL") : env("OPENAI_IMAGE_MODEL");
+  const model = String(form["model"] ?? "").trim() || (await genOpts()).defaultModel;
+  if (!model) return c.text("no OpenRouter image model available", 503);
   try {
-    await generateFace(service, game, face, { provider, apiKey, model: model || undefined, promptOverride: prompt });
+    await generateFace(service, game, face, { apiKey: env("OPENROUTER_API_KEY"), model, promptOverride: prompt });
   } catch (e) {
-    return c.text(`generation failed: ${(e as Error).message}`, 502);
+    return c.text(`generation failed: ${e instanceof Error ? e.message : String(e)}`, 502);
   }
   return c.json({ ok: true });
+});
+
+// OpenRouter image-model catalog for the Generate pane (proxy, TTL-cached).
+app.get("/gen/models", async (c) => {
+  if (!OPENROUTER) return c.json([], 503);
+  return c.json(await openRouterImageModels(env("OPENROUTER_API_KEY")));
 });
 
 const keyFromForm = async (c: { req: { parseBody: () => Promise<Record<string, unknown>>; param: (n: string) => string } }): Promise<{ key: AssetKey; face: Face } | null> => {
@@ -268,11 +282,11 @@ app.post("/bulk/generate", async (c) => {
   const ids = String(body["ids"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const faceSel = String(body["face"] ?? "front");
   const faces: Face[] = faceSel === "both" ? ["front", "spine"] : isFace(faceSel) ? [faceSel] : ["front"];
-  const provider = String(body["provider"] ?? PROVIDERS[0] ?? "") as "openai" | "google";
+  const apiKey = env("OPENROUTER_API_KEY");
+  if (!apiKey) return c.text("OpenRouter not configured", 503);
+  const model = String(body["model"] ?? "").trim() || (await genOpts()).defaultModel;
   if (!ids.length) return c.text("no games selected", 400);
-  if (!PROVIDERS.includes(provider)) return c.text("no generation provider configured", 503);
-  const apiKey = provider === "google" ? env("GEMINI_API_KEY") : env("OPENAI_API_KEY");
-  const model = provider === "google" ? env("GEMINI_IMAGE_MODEL") : env("OPENAI_IMAGE_MODEL");
+  if (!model) return c.text("no OpenRouter image model available", 503);
 
   const tasks = ids.flatMap((id) => faces.map((f) => ({ id, f })));
   const jobId = randomUUID();
@@ -283,9 +297,9 @@ app.post("/bulk/generate", async (c) => {
       const game = await gameById(t.id);
       job.current = `${game?.name ?? t.id} · ${t.f}`;
       try {
-        if (game) await generateFace(service, game, t.f, { provider, apiKey, model: model || undefined });
+        if (game) await generateFace(service, game, t.f, { apiKey, model });
       } catch (e) {
-        job.errors.push(`${game?.name ?? t.id}/${t.f}: ${(e as Error).message}`);
+        job.errors.push(`${game?.name ?? t.id}/${t.f}: ${e instanceof Error ? e.message : String(e)}`);
       }
       job.done++;
     }
@@ -336,5 +350,5 @@ app.post("/bulk/download", async (c) => {
 app.get("/healthz", (c) => c.json({ ok: true }));
 app.route("/", serve); // signed asset rendering (shared secret with the app)
 
-console.log(`bg-admin listening on :${PORT} (data ${DATA_DIR}, tiered=${tiered}, gcs=${GCS}, openai=${OPENAI}, gemini=${GEMINI}, obsidian=${OBSIDIAN})`);
+console.log(`bg-admin listening on :${PORT} (data ${DATA_DIR}, tiered=${tiered}, gcs=${GCS}, openrouter=${OPENROUTER}, obsidian=${OBSIDIAN})`);
 export default { port: PORT, fetch: app.fetch, idleTimeout: 60 }; // /studio/:id lists a game's GCS tier; default 10s can be tight on cold buckets
