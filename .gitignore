@@ -17,3 +17,6 @@ data
 # Google service-account key (never commit)
 *-key.json
 gcp-*.json
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
