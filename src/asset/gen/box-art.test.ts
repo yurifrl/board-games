@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { GenBoxArtSource, buildGenSources, themeHint, facePrompt, openrouterImageGen } from "./box-art.ts";
 import { aspectRatioFor, boxArtKey, STYLE_VERSION } from "../box-contract.ts";
 import type { Entity } from "../types.ts";
@@ -101,4 +101,38 @@ test("openrouterImageGen surfaces the API error message with the status", async 
       await expect(openrouterImageGen("k", "m")("p", "1:1")).rejects.toThrow("openrouter image 402: Insufficient credits");
     },
   );
+});
+
+test("openrouterImageGen logs the per-request cost from the response usage", async () => {
+  const log = spyOn(console, "log").mockImplementation(() => {});
+  try {
+    await withFetch(
+      async () => new Response(JSON.stringify({
+        data: [{ b64_json: "AAAA", media_type: "image/png" }],
+        usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46, cost: 0.0312 },
+      }), { status: 200 }),
+      async () => {
+        await openrouterImageGen("k", "google/gemini-2.5-flash-image")("p", "1:1");
+      },
+    );
+    expect(log).toHaveBeenCalledWith("[openrouter] model=google/gemini-2.5-flash-image cost=$0.0312 tokens=46");
+  } finally {
+    log.mockRestore();
+  }
+});
+
+test("openrouterImageGen skips the cost log without usage, and still returns bytes", async () => {
+  const log = spyOn(console, "log").mockImplementation(() => {});
+  try {
+    await withFetch(
+      async () => new Response(JSON.stringify({ data: [{ b64_json: "AAAA", media_type: "image/png" }] }), { status: 200 }),
+      async () => {
+        const bytes = await openrouterImageGen("k", "google/gemini-2.5-flash-image")("p", "1:1");
+        expect(bytes).toEqual(new Uint8Array([0, 0, 0]));
+      },
+    );
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("[openrouter]"));
+  } finally {
+    log.mockRestore();
+  }
 });

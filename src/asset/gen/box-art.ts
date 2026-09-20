@@ -222,6 +222,10 @@ export function openrouterImageGen(apiKey: string, model: string): ImageGen {
     const data = await res.json();
     const b64 = data?.data?.[0]?.b64_json;
     if (!b64) throw new Error(`openrouter returned no image for prompt: ${prompt.slice(0, 60)}…`);
+    const usage = data?.usage; // OpenRouter reports per-request cost when the provider provides it
+    if (usage?.cost != null) {
+      console.log(`[openrouter] model=${model} cost=$${usage.cost} tokens=${usage.total_tokens}`);
+    }
     return Uint8Array.from(Buffer.from(b64, "base64")); // media_type is always image/png (output_format is pinned)
   };
 }
