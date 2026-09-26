@@ -74,15 +74,17 @@ Games with `type: "expansion"` and an `expansion-of:` matching a base game's
 | `canBid`       | Shows the **Make a bid** button on `for_sale` games          |
 | `admin`        | Sees everything + implies `canSeePrices` and `canBid`        |
 
-## Covers (local cache, pluggable sources)
+## Covers (asset platform, pluggable sources)
 
-Covers live in `data/covers/<source>-<id>/` (`cover.jpg` + `cover.json` sidecar),
-filled idempotently by the worker. The app serves them via `GET /covers/:id` and
-never depends on a remote. Sources: `LudopediaProvider` (tier 30, full-res) and
-`BggImageProvider` (tier 10, the `image/grid` fallback). Add a provider in
-`src/covers/index.ts`; nothing else changes. The resolver skips covers already
-cached at an equal/better tier, upgrades when a better source appears, and never
-downgrades.
+Covers are stored in the private assets bucket via the asset service and
+served only through signed `/asset/...` URLs — never a public image host.
+The sync pulls them keyed by `bgg/id` / `ludopedia/id`; the note's
+`image/grid` property is **not** used by the pipeline (it exists only for
+the Obsidian Bases grid). Sources, best-first: `LudopediaCoverSource`
+(priority 30, full-res) and `BggCoverSource` (priority 20, BGG XML API,
+needs `BGG_BEARER_TOKEN` — anonymous requests get 401). Add a source in
+`src/asset/sources/` and register it in `registry.ts`; nothing else changes.
+Higher priority wins; re-mapping a game's id refetches.
 
 ## Inventory note format
 
@@ -90,9 +92,10 @@ Games are parsed from the YAML frontmatter of `.md` files in the vault folder
 `Yuri/Resources/Board Games/Inventory`. Recognized fields: `id`, `name`, `slug`,
 `language`, `type`, `expansion-of`, `price`, `purchase/source`,
 `purchase/date`, `tags`, `play_time` (minutes), `played` (boolean), `dimensions`,
-`bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`, `image/grid`, `description`
+`bgg/url`, `bgg/id`, `ludopedia/url`, `ludopedia/id`, `description`
 (short 1-2 line blurb), `box-art/description` (art direction for `gen-box-art`).
-Categories use `tags`. To list a game for sale:
+`image/grid` is optional and read only for the catalog `image` fallback + the
+Obsidian Bases grid — the cover pipeline ignores it. Categories use `tags`. To list a game for sale:
 
 ```yaml
 for_sale: true
