@@ -7,15 +7,16 @@
 import { Hono } from "hono";
 import { createHash, randomUUID } from "node:crypto";
 import { loadCatalog } from "../store.ts";
+import { displayOrder } from "../games.ts";
 import { buildAssetPlatform } from "../asset/platform.ts";
 import { runPipeline } from "../asset/pipeline.ts";
 import type { Entity } from "../asset/types.ts";
-import { addCandidate, history, promote, isManaged, type Provider } from "../asset/studio.ts";
+import { addCandidate, history, promote, isManaged, displayVersions, displayKey, type Provider } from "../asset/studio.ts";
 import { generateFace, composePrompt } from "../asset/gen/generate.ts";
 import { obsidianEnabled, readGlobalStyleRaw, saveGlobalStyle, DEFAULT_GLOBAL_STYLE, readGameArtNote, saveGameArtNote } from "../asset/gen/prompt-store.ts";
 import type { AssetKey } from "../asset/key.ts";
 import type { Face } from "../asset/box-contract.ts";
-import { studioPage, renderFacePane } from "./views.tsx";
+import { studioPage, renderFacePane, type Opts } from "./views.tsx";
 import { openRouterImageModels } from "./models.ts";
 
 const env = (k: string, d?: string): string => process.env[k] ?? d ?? "";
@@ -46,6 +47,33 @@ const toEntity = (g: Awaited<ReturnType<typeof gameById>> & {}): Entity => ({
 
 const isFace = (s: string): s is Face => s === "front" || s === "spine";
 const gameById = async (id: string) => (await loadCatalog(DATA_DIR)).find((g) => g.id === id);
+
+/**
+ * Example images for a generation: each example game's currently displayed
+ * front cover, downscaled to 768px and inlined as a base64 data URL. Games
+ * with no display slot are skipped (the model just gets fewer references).
+ */
+const exampleRefs = async (ids: string[]): Promise<string[]> => {
+  const refs: string[] = [];
+  for (const id of ids) {
+    const blob = await service.render(displayKey(id, "front"), new URLSearchParams({ w: "768" })).catch(() => null);
+    if (blob) refs.push(`data:${blob.contentType};base64,${Buffer.from(blob.bytes).toString("base64")}`);
+  }
+  return refs;
+};
+
+/** The `ex` form field: comma-separated example game ids. */
+const exampleIds = (raw: unknown): string[] =>
+  String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+
+/** Examples only ride along on models that accept image input (the catalog
+ * flag comes from OpenRouter's input_modalities); other models generate from
+ * the text prompt alone. Unknown model ids pass through untouched. */
+const refsFor = async (model: string, ids: string[]): Promise<string[]> => {
+  if (!ids.length) return [];
+  const m = (await openRouterImageModels()).find((c) => c.id === model);
+  return m && !m.inputImage ? [] : exampleRefs(ids);
+};
 const extFor = (name: string, contentType: string): string => {
   const dot = name.lastIndexOf(".");
   if (dot > 0) return name.slice(dot + 1).toLowerCase();
@@ -63,16 +91,19 @@ const genOpts = async (): Promise<Opts> => {
     models,
     defaultModel: env("OPENROUTER_IMAGE_MODEL") || models[0]?.id || "",
     obsidian: OBSIDIAN,
+    versions: await displayVersions(DATA_DIR),
   };
 };
 
 // Index: tiles only — candidate histories load per game on the detail route,
 // which is what made the old all-in-one index slow enough to need idleTimeout.
-app.get("/", async (c) => c.html(studioPage(await loadCatalog(DATA_DIR), await genOpts())));
+// Tile order mirrors the site home (displayOrder) by default; the header
+// sort select re-orders client-side.
+app.get("/", async (c) => c.html(studioPage(displayOrder(await loadCatalog(DATA_DIR)), await genOpts())));
 
 // Per-game studio detail under its own path (shareable /studio/<id>).
 app.get("/studio/:id", async (c) => {
-  const games = await loadCatalog(DATA_DIR);
+  const games = displayOrder(await loadCatalog(DATA_DIR));
   const game = games.find((g) => g.id === c.req.param("id"));
   if (!game) return c.text("Game not found", 404);
   const [front, spine] = await Promise.all([
@@ -144,30 +175,50 @@ app.get("/studio/:id/:face/prompt", async (c) => {
   return c.text(await composePrompt(service, game, face));
 });
 
-// Generate a face via OpenRouter (disk-only candidate). Optional `prompt`
-// overrides the default; optional `model` picks from GET /gen/models.
+// Generate a face via OpenRouter, then AUTO-PROMOTE the candidate to the display
+// slot (tk-dr8). Optional `prompt` overrides the default; optional `model` picks
+// from GET /gen/models. On success: { ok: true, promoted: true }; if the promote
+// step fails the candidate still exists (manual promote available):
+// { ok: true, promoted: false }. Generation failure: text error.
+// One in-flight single generation per game+face: clicking Generate again
+// cancels the running call (the paid OpenRouter request is aborted).
+const inFlightGens = new Map<string, AbortController>();
+
 app.post("/studio/:id/:face/generate", async (c) => {
   if (!OPENROUTER) return c.text("OpenRouter not configured", 503);
   const face = c.req.param("face");
   if (!isFace(face)) return c.text("bad face", 400);
   const game = await gameById(c.req.param("id"));
   if (!game) return c.text("not found", 404);
+  inFlightGens.get(`${game.id}/${face}`)?.abort(); // re-click cancels the previous run
   const form = await c.req.parseBody();
   const prompt = String(form["prompt"] ?? "");
   const model = String(form["model"] ?? "").trim() || (await genOpts()).defaultModel;
   if (!model) return c.text("no OpenRouter image model available", 503);
+  const refs = await refsFor(model, exampleIds(form["ex"]));
+  const ac = new AbortController();
+  inFlightGens.set(`${game.id}/${face}`, ac);
   try {
-    await generateFace(service, game, face, { apiKey: env("OPENROUTER_API_KEY"), model, promptOverride: prompt });
+    const key = await generateFace(service, game, face, { apiKey: env("OPENROUTER_API_KEY"), model, promptOverride: prompt, refs, signal: ac.signal });
+    try {
+      await promote(service, key, face, DATA_DIR);
+      return c.json({ ok: true, promoted: true });
+    } catch (e) {
+      console.error(`generate: promote failed for ${game.id}/${face}: ${e instanceof Error ? e.message : String(e)}`);
+      return c.json({ ok: true, promoted: false });
+    }
   } catch (e) {
+    if (ac.signal.aborted) return c.json({ ok: false, cancelled: true });
     return c.text(`generation failed: ${e instanceof Error ? e.message : String(e)}`, 502);
+  } finally {
+    if (inFlightGens.get(`${game.id}/${face}`) === ac) inFlightGens.delete(`${game.id}/${face}`);
   }
-  return c.json({ ok: true });
 });
 
 // OpenRouter image-model catalog for the Generate pane (proxy, TTL-cached).
 app.get("/gen/models", async (c) => {
   if (!OPENROUTER) return c.json([], 503);
-  return c.json(await openRouterImageModels(env("OPENROUTER_API_KEY")));
+  return c.json(await openRouterImageModels());
 });
 
 const keyFromForm = async (c: { req: { parseBody: () => Promise<Record<string, unknown>>; param: (n: string) => string } }): Promise<{ key: AssetKey; face: Face } | null> => {
@@ -274,8 +325,9 @@ app.post("/studio/:id/:face/delete-many", async (c) => {
 });
 
 // ---- Bulk generation (background job + progress polling) --------------------
-type BulkJob = { total: number; done: number; current: string; errors: string[]; running: boolean };
+type BulkJob = { total: number; done: number; current: string; errors: string[]; running: boolean; cancelled: boolean };
 const bulkJobs = new Map<string, BulkJob>();
+const bulkAbort = new Map<string, AbortController>();
 
 app.post("/bulk/generate", async (c) => {
   const body = await c.req.parseBody();
@@ -287,26 +339,52 @@ app.post("/bulk/generate", async (c) => {
   const model = String(body["model"] ?? "").trim() || (await genOpts()).defaultModel;
   if (!ids.length) return c.text("no games selected", 400);
   if (!model) return c.text("no OpenRouter image model available", 503);
+  // Example images resolved once, up front, and reused by every task.
+  const refs = await refsFor(model, exampleIds(body["ex"]));
 
   const tasks = ids.flatMap((id) => faces.map((f) => ({ id, f })));
   const jobId = randomUUID();
-  const job: BulkJob = { total: tasks.length, done: 0, current: "", errors: [], running: true };
+  const job: BulkJob = { total: tasks.length, done: 0, current: "", errors: [], running: true, cancelled: false };
+  const ac = new AbortController();
   bulkJobs.set(jobId, job);
+  bulkAbort.set(jobId, ac);
   void (async () => {
     for (const t of tasks) {
+      if (job.cancelled) break;
       const game = await gameById(t.id);
       job.current = `${game?.name ?? t.id} · ${t.f}`;
       try {
-        if (game) await generateFace(service, game, t.f, { apiKey, model });
+        if (game) {
+          const key = await generateFace(service, game, t.f, { apiKey, model, refs, signal: ac.signal });
+          if (job.cancelled) break;
+          try {
+            await promote(service, key, t.f, DATA_DIR);
+          } catch (e) {
+            job.errors.push(`${game.name}/${t.f} promote: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        } else {
+          job.errors.push(`${t.id}/${t.f}: game not in catalog`);
+        }
       } catch (e) {
-        job.errors.push(`${game?.name ?? t.id}/${t.f}: ${e instanceof Error ? e.message : String(e)}`);
+        if (!job.cancelled) job.errors.push(`${game?.name ?? t.id}/${t.f}: ${e instanceof Error ? e.message : String(e)}`);
       }
       job.done++;
     }
     job.running = false;
     job.current = "";
+    bulkAbort.delete(jobId);
   })();
   return c.json({ jobId });
+});
+
+// Cancel a running bulk job: stops before the next task and aborts the
+// in-flight model call.
+app.post("/bulk/cancel/:job", (c) => {
+  const j = bulkJobs.get(c.req.param("job"));
+  if (!j || !j.running) return c.text("no running job", 404);
+  j.cancelled = true;
+  bulkAbort.get(c.req.param("job"))?.abort();
+  return c.json({ ok: true });
 });
 
 app.get("/bulk/status/:job", (c) => {
@@ -328,7 +406,7 @@ app.post("/bulk/download", async (c) => {
   const ids = String(body["ids"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!ids.length) return c.text("no games selected", 400);
   const jobId = randomUUID();
-  const job: BulkJob = { total: ids.length, done: 0, current: "", errors: [], running: true };
+  const job: BulkJob = { total: ids.length, done: 0, current: "", errors: [], running: true, cancelled: false };
   bulkJobs.set(jobId, job);
   void (async () => {
     for (const id of ids) {

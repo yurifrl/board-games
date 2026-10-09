@@ -1,7 +1,7 @@
 import { expect, test, setSystemTime } from "bun:test";
 import { openRouterImageModels, resetModelsCache } from "./models.ts";
 
-type RawModel = { id: string; name?: string; architecture?: { output_modalities?: string[] } };
+type RawModel = { id: string; name?: string; architecture?: { input_modalities?: string[]; output_modalities?: string[] } };
 
 const catalog = (models: RawModel[], status = 200): Response =>
   new Response(JSON.stringify({ data: models }), { status });
@@ -20,7 +20,7 @@ async function withFetch(impl: typeof fetch, run: () => Promise<void>): Promise<
 const IMAGE_MODEL: RawModel = {
   id: "google/gemini-2.5-flash-image",
   name: "Gemini 2.5 Flash Image",
-  architecture: { output_modalities: ["image"] },
+  architecture: { input_modalities: ["text", "image"], output_modalities: ["image"] },
 };
 
 test("keeps only models whose architecture declares image output", async () => {
@@ -33,9 +33,9 @@ test("keeps only models whose architecture declares image output", async () => {
     { id: "qwen/qwen-image", name: "Qwen Image", architecture: { output_modalities: ["image"] } },
   ]), async () => {
     expect(await openRouterImageModels()).toEqual([
-      { id: "google/gemini-2.5-flash-image", name: "Gemini 2.5 Flash Image" },
-      { id: "google/gemini-2.5-flash-image-preview", name: "google/gemini-2.5-flash-image-preview" },
-      { id: "qwen/qwen-image", name: "Qwen Image" },
+      { id: "google/gemini-2.5-flash-image", name: "Gemini 2.5 Flash Image", inputImage: true },
+      { id: "google/gemini-2.5-flash-image-preview", name: "google/gemini-2.5-flash-image-preview", inputImage: false },
+      { id: "qwen/qwen-image", name: "Qwen Image", inputImage: false },
     ]);
   });
 });
@@ -64,12 +64,12 @@ test("caches the catalog within the TTL and refetches after it lapses", async ()
     return catalog([{ id: `m${fetches}`, name: `M${fetches}`, architecture: { output_modalities: ["image"] } }]);
   }, async () => {
     const first = await openRouterImageModels();
-    expect(first).toEqual([{ id: "m1", name: "M1" }]);
+    expect(first).toEqual([{ id: "m1", name: "M1", inputImage: false }]);
     setSystemTime(1_000_000 + 9 * 60_000); // still inside the TTL
     expect(await openRouterImageModels()).toEqual(first);
     expect(fetches).toBe(1);
     setSystemTime(1_000_000 + 11 * 60_000); // TTL lapsed → refetch
-    expect(await openRouterImageModels()).toEqual([{ id: "m2", name: "M2" }]);
+    expect(await openRouterImageModels()).toEqual([{ id: "m2", name: "M2", inputImage: false }]);
     expect(fetches).toBe(2);
   });
   setSystemTime(); // restore the real clock
@@ -84,12 +84,12 @@ test("a failed fetch is not cached and degrades to the last good list", async ()
       ? catalog([{ id: "good", name: "Good", architecture: { output_modalities: ["image"] } }])
       : new Response("boom", { status: 500 });
   }, async () => {
-    expect(await openRouterImageModels()).toEqual([{ id: "good", name: "Good" }]);
+    expect(await openRouterImageModels()).toEqual([{ id: "good", name: "Good", inputImage: false }]);
     setSystemTime(Date.now() + 11 * 60_000); // expire the good entry
-    expect(await openRouterImageModels()).toEqual([{ id: "good", name: "Good" }]); // last good list
+    expect(await openRouterImageModels()).toEqual([{ id: "good", name: "Good", inputImage: false }]); // last good list
     expect(fetches).toBe(2);
     setSystemTime(Date.now() + 22 * 60_000); // the failure was not cached → retry
-    expect(await openRouterImageModels()).toEqual([{ id: "good", name: "Good" }]);
+    expect(await openRouterImageModels()).toEqual([{ id: "good", name: "Good", inputImage: false }]);
     expect(fetches).toBe(3);
   });
   setSystemTime(); // restore the real clock

@@ -50,7 +50,16 @@ export interface GenerateOpts {
   /** An OpenRouter image-gen model id (e.g. from GET /gen/models). */
   model: string;
   promptOverride?: string;
+  /** Example images as data URLs, sent as reference images (models that accept
+   * image input only; others just get the text prompt). */
+  refs?: string[];
+  /** Aborts the in-flight model call (user clicked Generate again → cancel). */
+  signal?: AbortSignal;
 }
+
+/** OpenRouter image models can take a couple of minutes; abort past this so a
+ * hung request becomes a surfaced error instead of a stuck "0/N" progress line. */
+const MODEL_TIMEOUT_MS = 180_000;
 
 /** Generate one face for a game and store it as a disk-only candidate. */
 export async function generateFace(
@@ -61,7 +70,20 @@ export async function generateFace(
 ): Promise<AssetKey> {
   const prompt = opts.promptOverride?.trim() || (await composePrompt(service, game, face));
   const ratio = aspectRatioFor(face, game.dimensions);
-  const bytes = await openrouterImageGen(opts.apiKey, opts.model)(prompt, ratio);
+  let bytes: Uint8Array;
+  try {
+    bytes = await openrouterImageGen(opts.apiKey, opts.model)(
+      prompt,
+      ratio,
+      opts.refs,
+      opts.signal ?? AbortSignal.timeout(MODEL_TIMEOUT_MS),
+    );
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") {
+      throw new Error(`image model did not respond within ${MODEL_TIMEOUT_MS / 1000}s`);
+    }
+    throw e;
+  }
   const key = candidateKey(game.id, face, "openrouter", BOX_ART_FORMAT);
   await service.putLocal(key, {
     bytes,

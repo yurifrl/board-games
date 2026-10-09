@@ -121,6 +121,17 @@ test("openrouterImageGen logs the per-request cost from the response usage", asy
   }
 });
 
+test("openrouterImageGen aborts the in-flight fetch when the signal fires", async () => {
+  await withFetch((_url, init) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+  }), async () => {
+    const ac = new AbortController();
+    const run = openrouterImageGen("k", "google/gemini-2.5-flash-image")("p", "1:1", undefined, ac.signal);
+    ac.abort();
+    await expect(run).rejects.toThrow(/aborted|AbortError/);
+  });
+});
+
 test("openrouterImageGen skips the cost log without usage, and still returns bytes", async () => {
   const log = spyOn(console, "log").mockImplementation(() => {});
   try {

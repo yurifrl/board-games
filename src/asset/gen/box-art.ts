@@ -117,8 +117,10 @@ export function facePrompt(face: Face, name: string, input: FaceInput): string {
   );
 }
 
-/** prompt (+ aspect ratio) → PNG bytes. The only seam onto an actual model. */
-export type ImageGen = (prompt: string, aspectRatio: string) => Promise<Uint8Array>;
+/** prompt (+ aspect ratio) → PNG bytes. The only seam onto an actual model.
+ * `refs` are optional example images as data URLs, sent as reference images to
+ * models that accept image input; providers without that support ignore them. */
+export type ImageGen = (prompt: string, aspectRatio: string, refs?: string[], signal?: AbortSignal) => Promise<Uint8Array>;
 
 const OPENAI_MODEL = "gpt-image-1";
 
@@ -133,8 +135,9 @@ function openaiSize(aspectRatio: string): string {
 
 /** Default {@link ImageGen} backed by OpenAI's gpt-image-1. */
 export function openaiImageGen(apiKey: string, model = OPENAI_MODEL): ImageGen {
-  return async (prompt, aspectRatio) => {
+  return async (prompt, aspectRatio, _refs, signal) => {
     const res = await fetch("https://api.openai.com/v1/images/generations", {
+      signal,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, prompt, size: openaiSize(aspectRatio), n: 1 }),
@@ -170,9 +173,10 @@ function geminiAspect(aspectRatio: string): string {
 
 /** {@link ImageGen} backed by the Gemini image API (GEMINI_API_KEY). */
 export function geminiImageGen(apiKey: string, model = GEMINI_MODEL): ImageGen {
-  return async (prompt, aspectRatio) => {
+  return async (prompt, aspectRatio, _refs, signal) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const res = await fetch(url, {
+      signal,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -198,11 +202,20 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/images";
 /** {@link ImageGen} backed by OpenRouter's Image API (OPENROUTER_API_KEY). The
  * model is always caller-supplied (the admin studio picks from the catalog). */
 export function openrouterImageGen(apiKey: string, model: string): ImageGen {
-  return async (prompt, aspectRatio) => {
+  return async (prompt, aspectRatio, refs, signal) => {
     const res = await fetch(OPENROUTER_URL, {
+      signal,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, prompt, aspect_ratio: aspectRatio, output_format: "png" }),
+      body: JSON.stringify({
+        model,
+        prompt,
+        aspect_ratio: aspectRatio,
+        output_format: "png",
+        ...(refs?.length
+          ? { input_references: refs.map((url) => ({ type: "image_url", image_url: { url } })) }
+          : {}),
+      }),
     });
     if (res.status === 429) throw new SourceUnavailableError(BOX_ART_SOURCE, "openrouter image rate-limited (429)");
     if (!res.ok) {

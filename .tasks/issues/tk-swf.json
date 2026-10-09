@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-swf",
+  "title": "Cover Studio generation via OpenRouter — image-gen models only (replaces openai/google)",
+  "description": "",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "feature",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-19T22:19:25.698Z",
+  "updated_at": "2026-09-19T23:57:09.345Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": null,
+  "sprint": null,
+  "labels": [
+    "match"
+  ],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": "openrouter-cover-studio",
+  "metadata": {},
+  "attachments": [],
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-37f556f7-c051-4c87-ac41-05554019267c",
+      "issue_id": "tk-swf",
+      "author": "yuri",
+      "text": "# Brief\n\nReplace the admin Cover Studio's openai/google generation with OpenRouter exclusively. The studio must NOT gain OpenRouter as a third option — the existing openai/google choices in the studio are REPLACED by a model list of OpenRouter image-generation models only.\n\n## Worktree\n/Users/yuri/Workdir/Yuri/board-games/.worktrees/openrouter-cover-studio (branch `openrouter-cover-studio`, based on main @ 00f5710). All work + commits happen there. Do NOT push. Do NOT touch the repo root working tree.\n\n## Background facts\n- OpenRouter Image API: POST https://openrouter.ai/api/v1/images, headers Authorization: Bearer $KEY, body {model, prompt, aspect_ratio, output_format: \"png\"} → JSON {data: [{b64_json, media_type}]}. Errors: non-2xx JSON {error:{message}}.\n- Model discovery: GET https://openrouter.ai/api/v1/models?output_modalities=image (public, no key needed) → {data: [{id, name, architecture:{output_modalities:[...]}}]}. Server-side filter is authoritative; ALSO re-filter client-side (architecture.output_modalities includes \"image\") as defense in depth.\n- Repo: aspectRatioFor (src/asset/box-contract.ts:61) already returns colon ratios (\"3:4\",\"9:16\",\"1:1\") — pass through as aspect_ratio directly.\n- Existing seams: openaiImageGen/geminiImageGen backends in src/asset/gen/box-art.ts (backends near line 130-190, error style: throw new SourceUnavailableError(BOX_ART_SOURCE, msg), 429 handled explicitly); admin on-demand path src/asset/gen/generate.ts (77 lines: builds prompt, switches on opts.provider google?gemini:openai, stores disk-only candidate via service.putLocal with candidateKey(game.id, face, opts.provider, BOX_ART_FORMAT)); admin wiring src/admin/index.ts (env-gated PROVIDERS ~line 24, generate route /studio/:id/:face/generate ~line 138 reads form prompt+provider); studio UI src/admin/views.tsx (FacePane ~line 86: provider <select> from opts.providers, PROVIDER_LABEL, duplicate GenProvider type); candidate Provider union src/asset/studio.ts:26 = \"upload\"|\"openai\"|\"google\"|\"ludopedia\"|\"bgg\".\n\n## Change\n1. src/asset/gen/box-art.ts: add openrouterImageGen(apiKey, model): ImageGen — POST /api/v1/images with {model, prompt, aspect_ratio, output_format:\"png\"}; decode data[0].b64_json → Uint8Array; media_type from response (default image/png); 429 → SourceUnavailableError \"openrouter image rate-limited (429)\"; other non-2xx → SourceUnavailableError with status+message. Existing openai/gemini backends STAY (the batch worker's GenBoxArtSource/buildGenSources still uses them — out of scope).\n2. src/asset/gen/generate.ts: admin path becomes OpenRouter-only: opts {apiKey, model}; delete the provider switch here. Candidate key/source becomes \"openrouter\".\n3. src/asset/studio.ts: widen Provider union with \"openrouter\" (it is NOT managed; lands in the Generated group + source chip automatically).\n4. src/admin/index.ts: Generate pane gated on OPENROUTER_API_KEY only (drop openai/google gating here); model default = env OPENROUTER_IMAGE_MODEL, else first image model from the list; generate route reads form field model (non-empty string, falls back to default) instead of provider; add cached proxy endpoint GET /gen/models → [{id,name}] from /api/v1/models?output_modalities=image with in-memory TTL cache (~10 min) + client-side output_modalities re-filter; 503 when OPENROUTER not configured. Keep fetch failures degrading gracefully (empty list → UI falls back to default-model-only input).\n5. src/admin/views.tsx: replace the provider <select> with a model <select name=\"model\"> populated from opts.models (only image models; opts.defaultModel preselected); remove PROVIDER_LABEL/openai-google remnants from the studio form; keep candidate source chips (they derive from history automatically).\n6. chart/templates/deployment.yaml: add optional OPENROUTER_API_KEY secretKeyRef (same shared secret pattern, optional: true) to the admin container env. Do NOT remove existing OPENAI/GEMINI entries — check src/admin for other uses; if truly unused by admin after this change, note it in a comment on this task instead of deleting.\n7. Tests (colocated conventions, bun test): box-art.test.ts — openrouterImageGen request shape (model/prompt/aspect_ratio/png), b64 decode, 429 + error paths (mock fetch); models endpoint — image-only filtering + TTL cache; views.test.tsx — model select renders only listed models, default preselected; update any existing tests pinning the old openai/google studio form (views.test.tsx, pt-br.test.ts).\n\n## Acceptance\n- With OPENROUTER_API_KEY set: Generate pane shows ONE dropdown listing ONLY OpenRouter image-output models; no openai/google options anywhere in the studio.\n- Generate posts {prompt, model}; resulting disk-only candidate has source \"openrouter\", appears in history + Generated chip; promote/save-to-GCS flows unchanged.\n- Without OPENROUTER_API_KEY: Generate pane hidden (current behavior with zero keys).\n- Worker batch path (buildGenSources, src/worker/gen-box-art.ts) untouched; its tests still green.\n- OPENROUTER_IMAGE_MODEL env overrides the preselected default.\n- `bun test` green for touched files (src/asset/gen, src/admin, src/asset/studio.test.ts if exists, views).\n\n## Constraints\n- NO live OpenRouter calls: no OPENROUTER_API_KEY exists in this environment — mock fetch in tests only.\n- Skip project-wide lint/format; run only `bun test` on touched files.\n- When done: commit in the worktree (imperative subject, no AI signature), then `tk update tk-swf --status ready-to-review`, then exit. Report files changed + test output in your final message.",
+      "created_at": "2026-09-19T22:20:53.611Z"
+    },
+    {
+      "id": "comment-c5723e4f-b86f-47c4-ada1-9b6528d099d6",
+      "issue_id": "tk-swf",
+      "author": "yuri",
+      "text": "# Added acceptance criterion (user, mid-flight)\nThe studio detail page (/studio/:id) must default to the SPINE face (lombada), not front. Concretely in src/admin/views.tsx: the detail overlay (~line 159) renders data-face=\"front\" and the Front facetab (~163) has class=\"on\" — flip both so spine is the initially shown/active face. Everything downstream (initPane at ~668, CSS data-face selectors ~323-325) follows automatically. Verify the front pane still initializes lazily on first Front tab click. UI labels stay English.",
+      "created_at": "2026-09-19T22:29:14.157Z"
+    },
+    {
+      "id": "comment-8310311a-f9d3-477e-95d2-47279229cf0e",
+      "issue_id": "tk-swf",
+      "author": "yuri",
+      "text": "DONE: bd4b904 in .worktrees/openrouter-cover-studio — Cover Studio generation now OpenRouter-only.\n\n- src/asset/gen/box-art.ts: openrouterImageGen(apiKey, model) posts {model, prompt, aspect_ratio, output_format:\"png\"} to https://openrouter.ai/api/v1/images with Bearer auth; decodes data[0].b64_json; 429 → SourceUnavailableError; other errors surfaced as 'openrouter image <status>: <api message>'. openai/gemini backends kept for the worker (brief item 7).\n- src/asset/gen/generate.ts: generateFace is OpenRouter-only, candidate provider 'openrouter'; composePrompt untouched.\n- src/asset/studio.ts: Provider union + doc line include 'openrouter'.\n- src/admin/models.ts (new): openRouterImageModels() TTL-caches the PUBLIC https://openrouter.ai/api/v1/models?output_modalities=image catalog (no auth header), keeps only architecture.output_modalities including 'image', name falls back to id, failures degrade to last-good list (failures not cached); resetModelsCache() test seam.\n- src/admin/index.ts: OPENROUTER flag from OPENROUTER_API_KEY; genOpts() supplies models + defaultModel (OPENROUTER_IMAGE_MODEL or first listed, empty when unconfigured); / and /studio/:id and /studio/:id/pane/:face render via genOpts; generate + bulk/generate routes gated on OPENROUTER with default-model fallback; new GET /gen/models proxy; startup log openrouter=<bool>. NOTE per brief item 6: OPENAI_API_KEY/GEMINI_API_KEY envs are now unused in src/admin (still wired in chart/deployment.yaml for the worker) — left in place, flagged here rather than deleted.\n- src/admin/views.tsx: provider select REPLACED by a single model <select> fed from opts.models (defaultModel preselected; <=1 model renders a hidden model input with models[0] ?? defaultModel); gen UI gated on opts.gen (index passes OPENROUTER).\n- chart/templates/deployment.yaml: admin container gets optional OPENROUTER_API_KEY secretKeyRef; OPENAI/GEMINI entries intentionally kept (worker path).\n- Spine default (added criterion): detail pane renders data-face=\"spine\" with class=\"on\" on the Spine tab; lazy init + CSS already key off det.dataset.face so Front initializes on first click.\n- Tests (bun test, network mocked via global fetch swap, no key ever set): box-art.test.ts extended (Image API request shape/b64 decode/429/402 error message, buildGenSources from apiKey alone); new src/admin/models.test.ts (image-only filter, public no-auth URL, TTL cache + lapse refetch, failed fetch degrades to last-good without caching); new src/admin/views.test.tsx (model select lists only catalog models with default preselected, no provider select remains, hidden-model fallback, spine default, gen=false hides all generation surfaces). All 23 pass across the 4 touched files; existing box-art/studio tests unmodified and green; bun build of src/admin/index.ts and src/worker/gen-box-art.ts resolves (ADMIN_OK/WORKER_OK).",
+      "created_at": "2026-09-19T22:39:37.486Z"
+    },
+    {
+      "id": "comment-16666359-5bfe-4172-a059-797cf6a91f30",
+      "issue_id": "tk-swf",
+      "author": "yuri",
+      "text": "ValidatorCoverStudio died on provider 429 (quota, resets 2026-09-20 07:20). Coach performed the validation pass directly.\n\nEvidence, all grounded:\n- Diff reviewed line-by-line (bd4b904): openai/gemini dispatch removed from admin paths; openrouterImageGen sole backend; PROVIDERS/GenProvider gone from admin.\n- Models: GET openrouter.ai/api/v1/models?output_modalities=image + client hasImageOutput filter, 10min TTL, fetch failures not cached (last-good/empty degrade). /gen/models proxy returns 503 when unconfigured.\n- Spine default: detail renders data-face=\"spine\", Spine tab .on, pinned by src/admin/views.test.tsx.\n- No-key gate: live boot (env -u OPENROUTER_API_KEY, port 3102) -> openrouter=false, Generate button/bulkGo absent (sole match is null-guard script line); generate/bulk endpoints 503.\n- With-key live boot (port 3104): /gen/models returns 54 image models (openai/gpt-image-2.5-*, microsoft/mai-image-2.6, meta/muse-image, recraft-v4-*).\n- Chart: OPENROUTER_API_KEY secretKeyRef added to admin deployment env.\n- Tests re-run by Coach in worktree: 23 pass / 0 fail (4 files).\n\nVerdict: approved.",
+      "created_at": "2026-09-19T23:39:11.471Z"
+    }
+  ],
+  "comment_count": 4
+}

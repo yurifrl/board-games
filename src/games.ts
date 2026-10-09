@@ -103,3 +103,12 @@ export function groupGames(games: Game[]): GameGroup[] {
   }
   return result;
 }
+
+/**
+ * Flat list in the order the home page displays the collection: bases sorted
+ * (newest purchase first, unknown dates last, then by name), each followed by
+ * its name-sorted expansions. Use wherever a flat view must match the site.
+ */
+export function displayOrder(games: Game[]): Game[] {
+  return groupGames(games).flatMap((grp) => [grp.base, ...grp.expansions]);
+}

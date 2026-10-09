@@ -20,7 +20,7 @@ import type { AssetKey } from "./key.ts";
 import { keyPath } from "./key.ts";
 import type { AssetService } from "./service.ts";
 import type { AssetBlob } from "./types.ts";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { writeJsonAtomic } from "../store.ts";
 
 export type Provider = "upload" | "openai" | "google" | "openrouter" | "ludopedia" | "bgg";
@@ -152,21 +152,38 @@ async function readDisplays(dataDir: string): Promise<DisplayVersions> {
   }
 }
 
-/** Record a promotion epoch for a game+face. */
+/** Record a promotion epoch for a game+face. Refreshes the in-process cache so
+ * the same admin process reads the new epoch immediately. */
 export async function notePromotion(dataDir: string, entity: string, face: Face): Promise<void> {
   const map = await readDisplays(dataDir);
   map[`${entity}/${face}`] = Date.now();
   await writeJsonAtomic(`${dataDir}/${DISPLAYS_FILE}`, map);
+  const st = await statDisplays(dataDir); // keep the cache stat-accurate
+  displaysCache = { at: Date.now(), map, mtimeMs: st?.mtimeMs ?? 0, size: st?.size ?? 0 };
 }
 
-/** Promoted-version map with a small TTL cache — mirrors loadGames(): the file
- * only changes on promotion, so a stale window of seconds is fine. */
+/** Promoted-version map with a small TTL cache. Freshness is mtime+size aware:
+ * another process (the public app) promoting on the same volume is picked up
+ * near-instantly instead of after the TTL. On stat error fall back to TTL. */
 const TTL_MS = 30_000;
-let displaysCache: { at: number; map: DisplayVersions } | null = null;
+let displaysCache: { at: number; map: DisplayVersions; mtimeMs: number; size: number } | null = null;
+
+async function statDisplays(dataDir: string): Promise<{ mtimeMs: number; size: number } | null> {
+  try {
+    const s = await stat(`${dataDir}/${DISPLAYS_FILE}`);
+    return { mtimeMs: s.mtimeMs, size: s.size };
+  } catch {
+    return null; // missing file etc. — fall back to TTL-only
+  }
+}
 
 export async function displayVersions(dataDir: string): Promise<DisplayVersions> {
-  if (displaysCache && Date.now() - displaysCache.at < TTL_MS) return displaysCache.map;
+  if (displaysCache && Date.now() - displaysCache.at < TTL_MS) {
+    const st = await statDisplays(dataDir);
+    if (st && st.mtimeMs === displaysCache.mtimeMs && st.size === displaysCache.size) return displaysCache.map;
+  }
   const map = await readDisplays(dataDir);
-  displaysCache = { at: Date.now(), map };
+  const st = await statDisplays(dataDir);
+  displaysCache = { at: Date.now(), map, mtimeMs: st?.mtimeMs ?? 0, size: st?.size ?? 0 };
   return map;
 }

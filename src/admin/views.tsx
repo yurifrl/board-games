@@ -9,7 +9,7 @@ import { sign } from "../asset/auth.ts";
 import type { ImageModel } from "./models.ts";
 
 export type Studio = { game: Game; front: Candidate[]; spine: Candidate[] };
-export type Opts = { gcs: boolean; gen: boolean; models: ImageModel[]; defaultModel: string; obsidian: boolean };
+export type Opts = { gcs: boolean; gen: boolean; models: ImageModel[]; defaultModel: string; obsidian: boolean; versions?: Record<string, number> };
 
 // Which source group a provider belongs to (drives the section toggle).
 // Downloaded covers group PER SOURCE (bgg / ludopedia), not as one bucket —
@@ -20,8 +20,8 @@ const groupOf = (provider: string): string =>
 const candidateUrl = (c: Candidate, w: number): string =>
   `/asset/${c.key.entity}/${c.key.kind}/${c.key.source}/${c.key.variant}.${c.key.ext}?${sign(c.key, { w })}`;
 
-const displayUrl = (id: string, face: Face, w: number): string =>
-  `/asset/${id}/display/${face}/latest.png?${sign(displayKey(id, face), { w })}`;
+const displayUrl = (id: string, face: Face, w: number, v?: number): string =>
+  `/asset/${id}/display/${face}/latest.png?${sign(displayKey(id, face), { w })}${v ? "&v=" + v : ""}`;
 
 // Fallbacks so a tile isn't empty before anything is promoted (mirrors the app).
 const coverFallback = (g: Game, w: number): string => {
@@ -101,7 +101,7 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
       </div>
       <div class="stage">
         <div class="preview">
-          <img src={displayUrl(g.id, face, 900)} alt="" data-fb={fb || undefined} onerror={fbChain(fb)} />
+          <img src={displayUrl(g.id, face, 900, opts.versions?.[g.id + "/" + face])} alt="" data-fb={fb || undefined} onerror={fbChain(fb)} />
         </div>
         <div class="actbar" hidden>
           <span class="selmeta"></span>
@@ -116,17 +116,9 @@ const FacePane: FC<{ g: Game; face: Face; history: Candidate[]; opts: Opts }> = 
         <aside class="side">
           <div class="gptitle">Generate {face === "front" ? "front" : "spine"}</div>
           <form method="post" action={`/studio/${g.id}/${face}/generate`}>
-            <textarea name="prompt" class="prompt" rows={8} placeholder="loading default prompt…"></textarea>
+            <input type="hidden" name="model" value={opts.defaultModel} />
+            <textarea name="prompt" class="prompt" rows={8} placeholder="type a prompt — blank uses the saved default prompt"></textarea>
             <div class="gpcontrols">
-              {opts.models.length > 1 ? (
-                <select name="model" class="provsel" title="OpenRouter image models">
-                  {opts.models.map((m) => (
-                    <option value={m.id} selected={m.id === opts.defaultModel}>{m.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input type="hidden" name="model" value={opts.models[0]?.id ?? opts.defaultModel} />
-              )}
               <span class="gpaspect">automatic aspect ratio</span>
               <button type="submit" class="gengo">Generate</button>
             </div>
@@ -146,16 +138,16 @@ export const renderFacePane = (g: Game, face: Face, history: Candidate[], opts: 
 const Tile: FC<{ g: Game; opts: Opts; active?: Studio }> = ({ g, opts, active }) => {
   const ar = g.dimensions ? `${g.dimensions.widthCm}/${g.dimensions.heightCm}` : "3/4";
   return (
-    <section class={`card${active ? " open" : ""}`} data-id={g.id} data-name={g.name.toLowerCase()} style={`--tint:${g.tint ?? "#3a3a44"}`}>
+    <section class={`card${active ? " open" : ""}`} data-id={g.id} data-name={g.name.toLowerCase()} data-purchased={g.purchasedAt ?? ""} style={`--tint:${g.tint ?? "#3a3a44"}`}>
       <input type="checkbox" class="pick" title="Select" />
       <a class="tile" href={`/studio/${g.id}`}>
         <span class="front" style={`aspect-ratio:${ar}`}>
-          <img src={displayUrl(g.id, "front", 300)} alt="" loading="lazy" data-fb={coverFallback(g, 300) || undefined} onerror={fbChain(coverFallback(g, 300))} />
+          <img src={displayUrl(g.id, "front", 600, opts.versions?.[g.id + "/front"])} alt="" loading="lazy" data-fb={coverFallback(g, 300) || undefined} onerror={fbChain(coverFallback(g, 300))} />
           <span class="nm">{g.name}</span>
         </span>
         <span class="spine">
           <span class="snm">{g.name}</span>
-          <img src={displayUrl(g.id, "spine", 240)} alt="" loading="lazy" data-fb={genSpineFallback(g.id)} onerror={fbChain(genSpineFallback(g.id))} />
+          <img src={displayUrl(g.id, "spine", 480, opts.versions?.[g.id + "/spine"])} alt="" loading="lazy" data-fb={genSpineFallback(g.id)} onerror={fbChain(genSpineFallback(g.id))} />
         </span>
       </a>
       {active ? (
@@ -206,15 +198,34 @@ export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =
             <button data-v="spine">Spine</button>
             <button data-v="both" class="on">Both</button>
           </div>
+          <div class="sizes" title="Tile size">
+            <button data-s="s" class="on">S</button>
+            <button data-s="m">M</button>
+            <button data-s="l">L</button>
+          </div>
+          <select id="sortSel" class="provsel" title="Tile order">
+            <option value="default">Collection order</option>
+            <option value="name">Name A–Z</option>
+            <option value="name-desc">Name Z–A</option>
+            <option value="newest">Newest purchase</option>
+            <option value="oldest">Oldest purchase</option>
+          </select>
           <input id="q" type="search" placeholder="filter games…" />
+          {opts.gen && opts.models.length ? (
+            <select id="globalModel" class="provsel" title="AI model used by every Generate action">
+              {opts.models.map((m) => (
+                <option value={m.id} selected={m.id === opts.defaultModel}>{m.name}</option>
+              ))}
+            </select>
+          ) : null}
           {opts.gen ? <button id="selBtn" class="gstyle">Select</button> : null}
+          {opts.gen ? <button id="exBtn" class="gstyle" title="Mark games whose cover is sent as a style example with the next generation">Examples</button> : null}
           {opts.obsidian ? <button id="globalStyleBtn" class="gstyle">Global style</button> : null}
         </header>
         {opts.gen ? (
           <div id="bulkbar">
-            <input id="pat" type="text" placeholder="regex to match (e.g. ^cat|arcs)" />
-            <button type="button" id="patGo">Match</button>
             <span id="selCount">0 marked</span>
+            <span id="exCount" class="exmeta"></span>
             <select id="bulkFace">
               <option value="front">Front</option>
               <option value="spine">Spine</option>
@@ -257,19 +268,23 @@ export const studioPage = (games: Game[], opts: Opts, active?: Studio): string =
 const CSS = `
 *{box-sizing:border-box}
 html,body{max-width:100%;overflow-x:hidden}
-body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#14141a;color:#e8e8ee}
+/* Tile size tokens: overridden by data-size below; the mobile media query keeps
+   fixed .card overrides, so the size buttons only apply on desktop. */
+body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#14141a;color:#e8e8ee;--h:210px;--sw:44px}
+body[data-size=m]{--h:290px;--sw:61px}
+body[data-size=l]{--h:380px;--sw:104px}
 header{position:sticky;top:0;z-index:10;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:#1c1c26cc;backdrop-filter:blur(8px);border-bottom:1px solid #2a2a38}
 header h1{font-size:17px;margin:0}
 .views{display:flex;gap:6px}
-.views button{background:#2a2a38;color:#cfcfe0;border:0;border-radius:999px;padding:6px 14px;cursor:pointer}
-.views button.on{background:#5b6cff;color:#fff}
+.sizes{display:flex;gap:6px}
+.views button,.sizes button{background:#2a2a38;color:#cfcfe0;border:0;border-radius:999px;padding:6px 14px;cursor:pointer}
+.views button.on,.sizes button.on{background:#5b6cff;color:#fff}
 #q{flex:1;min-width:160px;background:#0f0f16;border:1px solid #2a2a38;color:#e8e8ee;border-radius:8px;padding:8px 12px}
 .gstyle{background:#2a2a38;color:#cfcfe0;border:0;border-radius:999px;padding:6px 14px;cursor:pointer}
 .gstyle.on{background:#5b6cff;color:#fff}
 #bulkbar{display:none;width:100%;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:#181822;border-bottom:1px solid #2a2a38}
 body[data-sel] #bulkbar{display:flex}
-#bulkbar input,#bulkbar select{background:#0f0f16;border:1px solid #2a2a38;color:#e8e8ee;border-radius:8px;padding:6px 10px}
-#bulkbar #pat{flex:1;min-width:160px}
+#bulkbar select{background:#0f0f16;border:1px solid #2a2a38;color:#e8e8ee;border-radius:8px;padding:6px 10px}
 dialog#globalStyleDlg,dialog#delDlg{width:min(680px,92vw);background:#1c1c26;color:#e8e8ee;border:1px solid #2a2a38;border-radius:14px;padding:18px}
 dialog#globalStyleDlg::backdrop,dialog#delDlg::backdrop{background:#0009}
 dialog#globalStyleDlg h3,dialog#delDlg h3{margin:0 0 10px;font-size:15px}
@@ -280,6 +295,15 @@ dialog#globalStyleDlg .hint,dialog#delDlg .hint{color:#8a8a9a;font-weight:400;fo
 body[data-sel] .card{position:relative}
 body[data-sel] .card .pick{display:block}
 body[data-sel] .card.marked{outline:2px solid #5b6cff;outline-offset:3px;border-radius:6px}
+/* Examples mode: click a tile to mark (orange) the game whose displayed cover
+   rides along as a style reference on the next generation. Select and Examples
+   coexist: a tile can be both a target (blue outline) and an example (orange
+   ring), so the two marks use different ring mechanics. */
+body[data-ex] #bulkbar{display:flex}
+body[data-ex] .card{position:relative}
+body[data-ex] .card .tile{cursor:crosshair}
+body[data-ex] .card.exd{box-shadow:0 0 0 3px #e8a04c;border-radius:6px}
+#exCount.exmeta{color:#e8a04c;font-size:12px}
 dialog#globalStyleDlg{width:min(680px,92vw);background:#1c1c26;color:#e8e8ee;border:1px solid #2a2a38;border-radius:14px;padding:18px}
 dialog#globalStyleDlg::backdrop{background:#0009}
 dialog#globalStyleDlg h3{margin:0 0 10px;font-size:15px}
@@ -287,7 +311,6 @@ dialog#globalStyleDlg .hint{color:#8a8a9a;font-weight:400;font-size:12px}
 
 /* List: flat, shelf-less — front covers and/or spines, sized like the app */
 main{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;padding:20px}
-.card{--h:210px}
 .tile{all:unset;cursor:pointer;display:flex;gap:8px;align-items:flex-end}
 .tile:hover{transform:translateY(-4px)}
 .tile{transition:transform .15s}
@@ -296,9 +319,9 @@ main{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;padding:20px}
 .tile .front img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .tile .front .nm{position:absolute;left:0;right:0;bottom:0;padding:6px 8px;font-size:12px;font-weight:700;color:#fff;background:linear-gradient(0deg,#000b,transparent);text-shadow:0 1px 2px #000}
 /* spine */
-.tile .spine{position:relative;width:44px;height:var(--h);border-radius:3px;overflow:hidden;background:var(--tint);box-shadow:0 8px 18px #0006}
+.tile .spine{position:relative;width:var(--sw);height:var(--h);border-radius:3px;overflow:hidden;background:var(--tint);box-shadow:0 8px 18px #0006}
 .tile .spine img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
-.tile .spine .snm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);color:#fff;font-weight:700;font-size:12px;text-shadow:0 1px 2px #000;padding:10px 0;text-align:center}
+.tile .spine .snm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;writing-mode:vertical-rl;transform:rotate(180deg);color:#fff;font-weight:700;font-size:calc(var(--sw)*0.27);text-shadow:0 1px 2px #000;padding:10px 0;text-align:center}
 /* per-view visibility */
 body[data-view=front] .tile .spine,body[data-view=spine] .tile .front{display:none}
 /* Detail overlay: server-rendered open on /studio/<id> */
@@ -400,7 +423,64 @@ var body=document.body;
 document.querySelectorAll('.views button').forEach(function(b){b.onclick=function(){
   document.querySelectorAll('.views button').forEach(function(x){x.classList.remove('on')});
   b.classList.add('on');body.dataset.view=b.dataset.v;localStorage.setItem('studioView',b.dataset.v);};});
-var sv=localStorage.getItem('studioView');if(sv){var t=document.querySelector('.views button[data-v="'+sv+'"]');if(t)t.click();}
+var sv=localStorage.getItem('studioView')||'both';var t=document.querySelector('.views button[data-v="'+sv+'"]');if(t)t.click();
+
+// tile size buttons (S/M/L) -> body[data-size], persisted in 'studioSize'.
+// Mobile keeps fixed tile heights (media query), so this only affects desktop.
+document.querySelectorAll('.sizes button').forEach(function(b){b.onclick=function(){
+  document.querySelectorAll('.sizes button').forEach(function(x){x.classList.remove('on')});
+  b.classList.add('on');body.dataset.size=b.dataset.s;localStorage.setItem('studioSize',b.dataset.s);};});
+var ss=localStorage.getItem('studioSize');if(ss){var st=document.querySelector('.sizes button[data-s="'+ss+'"]');if(st)st.click();}
+
+// tile sort: 'default' keeps the server-rendered order (same as the site home);
+// the other options re-order the cards in place. Persisted in 'studioSort'.
+// Unknown purchase dates go last, then by name — mirroring the site's ordering.
+var sortSel=document.getElementById('sortSel');
+if(sortSel){
+  var mainEl=document.querySelector('main');
+  var cardsInDefault=[].slice.call(mainEl.querySelectorAll('.card'));
+  var purchasedOf=function(c){var v=c.dataset.purchased;return v===''?null:Number(v);};
+  var byPurchase=function(a,b){
+    var pa=purchasedOf(a),pb=purchasedOf(b);
+    if(pa===null&&pb===null)return a.dataset.name.localeCompare(b.dataset.name);
+    if(pa===null)return 1;if(pb===null)return -1;
+    return pa-pb||a.dataset.name.localeCompare(b.dataset.name);
+  };
+  var sortCmps={
+    'name':function(a,b){return a.dataset.name.localeCompare(b.dataset.name);},
+    'name-desc':function(a,b){return b.dataset.name.localeCompare(a.dataset.name);},
+    'newest':function(a,b){
+      var pa=purchasedOf(a),pb=purchasedOf(b);
+      if(pa===null&&pb===null)return a.dataset.name.localeCompare(b.dataset.name);
+      if(pa===null)return 1;if(pb===null)return -1;
+      return pb-pa||a.dataset.name.localeCompare(b.dataset.name);
+    },
+    'oldest':function(a,b){return byPurchase(a,b);}
+  };
+  var applySort=function(){
+    var v=sortSel.value,ordered=cardsInDefault.slice();
+    if(v!=='default')ordered.sort(sortCmps[v]);
+    ordered.forEach(function(c){mainEl.appendChild(c);});
+    localStorage.setItem('studioSort',v);
+  };
+  sortSel.addEventListener('change',applySort);
+  var savedSort=localStorage.getItem('studioSort');
+  if(savedSort&&sortSel.querySelector('option[value="'+savedSort+'"]')){sortSel.value=savedSort;applySort();}
+}
+
+// global default AI model (single + bulk): stored in 'studioDefaultModel',
+// restored on load, and propagated into every generate form's hidden input.
+var globalSel=document.getElementById('globalModel');
+function applyGlobalModel(){
+  if(!globalSel||!globalSel.value)return; // empty selection must not clobber the server default
+  document.querySelectorAll('.side form input[name="model"]').forEach(function(i){i.value=globalSel.value;});
+}
+if(globalSel){
+  var sd=localStorage.getItem('studioDefaultModel');
+  if(sd&&globalSel.querySelector('option[value="'+sd+'"]'))globalSel.value=sd;
+  globalSel.addEventListener('change',function(){localStorage.setItem('studioDefaultModel',globalSel.value);applyGlobalModel();});
+  applyGlobalModel();
+}
 
 var q=document.getElementById('q');q.oninput=function(){var v=q.value.toLowerCase();
   document.querySelectorAll('.card').forEach(function(c){c.style.display=c.dataset.name.indexOf(v)>=0?'':'none';});};
@@ -410,7 +490,7 @@ var q=document.getElementById('q');q.oninput=function(){var v=q.value.toLowerCas
 document.querySelectorAll('.card').forEach(function(card){
   var pick=card.querySelector('.pick');
   card.querySelector('.tile').addEventListener('click',function(e){
-    if(body.dataset.sel===undefined)return;
+    if(body.dataset.mode!=='sel')return;
     e.preventDefault();pick.checked=!pick.checked;pick.onchange();
   });
   if(pick)pick.onchange=function(){card.classList.toggle('marked',pick.checked);bulkCount();};
@@ -420,38 +500,86 @@ document.querySelectorAll('.card').forEach(function(card){
 function picked(){return Array.prototype.slice.call(document.querySelectorAll('.card .pick:checked')).map(function(p){return p.closest('.card').dataset.id;});}
 function bulkCount(){var el=document.getElementById('selCount');if(el)el.textContent=picked().length+' marked';}
 (function(){
-  var selBtn=document.getElementById('selBtn');if(!selBtn)return;
+  var selBtn=document.getElementById('selBtn'),exBtn=document.getElementById('exBtn');
+  if(!selBtn&&!exBtn)return;
+  // Modes coexist and marks persist: examples are refs, select marks are
+  // targets — generation needs both at once. data-mode is the active one:
+  // the button clicked last wins; tile clicks apply to it. Deactivating a
+  // mode falls back to the other while it is still on.
+  var setMode=function(m){
+    if(m){body.dataset.mode=m;return;}
+    if(body.dataset.sel!==undefined)body.dataset.mode='sel';
+    else if(body.dataset.ex!==undefined)body.dataset.mode='ex';
+    else delete body.dataset.mode;
+  };
   selBtn.onclick=function(){
-    if(body.dataset.sel!==undefined){delete body.dataset.sel;selBtn.classList.remove('on');}
-    else{body.dataset.sel='';selBtn.classList.add('on');}
+    var on=body.dataset.sel===undefined;
+    if(on){body.dataset.sel='';selBtn.classList.add('on');}
+    else{delete body.dataset.sel;selBtn.classList.remove('on');}
+    setMode(on?'sel':'');
   };
-  var patGo=document.getElementById('patGo'),pat=document.getElementById('pat');
-  if(patGo)patGo.onclick=function(){
-    var re;try{re=new RegExp(pat.value,'i');}catch(e){alert('invalid regex');return;}
-    document.querySelectorAll('.card').forEach(function(c){
-      if(c.style.display==='none')return;
-      var m=re.test(c.dataset.name);var pk=c.querySelector('.pick');pk.checked=m;c.classList.toggle('marked',m);
+  if(exBtn)exBtn.onclick=function(){
+    var on=body.dataset.ex===undefined;
+    if(on){body.dataset.ex='';exBtn.classList.add('on');}
+    else{delete body.dataset.ex;exBtn.classList.remove('on');}
+    setMode(on?'ex':'');
+  };
+  // Example tiles: in Examples mode a tile click toggles the example mark.
+  document.querySelectorAll('.card').forEach(function(card){
+    var tile=card.querySelector('.tile');if(!tile)return;
+    tile.addEventListener('click',function(e){
+      if(body.dataset.mode!=='ex')return;
+      e.preventDefault();
+      card.classList.toggle('exd');
+      exCount();
     });
-    bulkCount();
-  };
+  });
+  function exCount(){var el=document.getElementById('exCount');if(el){var n=document.querySelectorAll('.card.exd').length;el.textContent=n?(n+' example'+(n>1?'s':'')):'';}}
+  exCount();
   var go=document.getElementById('bulkGo'),dl=document.getElementById('bulkDl'),prog=document.getElementById('bulkProg');
-  function runBulk(url,extra){
+  var bulkJob=null; // set while a cancellable (generate) run is in flight; its click then cancels
+  function runBulk(url,extra,cancellable){
     var ids=picked();if(!ids.length){alert('nothing marked');return;}
     var fd=new URLSearchParams();fd.set('ids',ids.join(','));for(var k in extra)fd.set(k,extra[k]);
-    if(go)go.disabled=true;if(dl)dl.disabled=true;prog.textContent='starting\u2026';
+    if(go&&!cancellable)go.disabled=true;if(dl)dl.disabled=true;prog.textContent='starting\u2026';
+    // Errors must surface, never swallow: a non-JSON body (503 "openrouter not
+    // configured", 404 "no job" after an admin restart, proxy 502 HTML) would
+    // otherwise die as a cryptic SyntaxError, or in the poller, silently.
+    function readJson(r){
+      return r.text().then(function(tx){
+        try{return JSON.parse(tx);}catch(e){throw new Error('HTTP '+r.status+(tx?(' \u2014 '+tx.slice(0,300)):''));}
+      });
+    }
     fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()})
-      .then(function(r){return r.json();}).then(function(d){
+      .then(readJson).then(function(d){
+        bulkJob=cancellable?d.jobId:null;
+        if(go&&cancellable){go.dataset.o=go.dataset.o||go.textContent;go.textContent='Cancel';}
+        var restoreGo=function(){if(!go)return;go.disabled=false;if(go.dataset.o){go.textContent=go.dataset.o;delete go.dataset.o;}};
         var t=setInterval(function(){
-          fetch('/bulk/status/'+d.jobId).then(function(r){return r.json();}).then(function(s){
-            prog.textContent=s.done+'/'+s.total+(s.current?(' \u00b7 '+s.current):'')+(s.errors.length?(' \u00b7 '+s.errors.length+' error(s)'):'');
-            if(!s.running){clearInterval(t);if(go)go.disabled=false;if(dl)dl.disabled=false;prog.textContent='done '+s.done+'/'+s.total+(s.errors.length?(' ('+s.errors.length+' error)'):'');setTimeout(function(){location.reload();},900);}
+          fetch('/bulk/status/'+d.jobId).then(readJson).then(function(s){
+            if(!s.cancelled)prog.textContent=s.done+'/'+s.total+(s.current?(' \u00b7 '+s.current):'')+(s.errors.length?(' \u00b7 '+s.errors.length+' error(s)'):'');
+            if(!s.running){
+              clearInterval(t);bulkJob=null;restoreGo();if(dl)dl.disabled=false;
+              prog.textContent=(s.cancelled?'cancelled ':'done ')+s.done+'/'+s.total+(s.errors.length?(' \u00b7 '+s.errors.length+' error(s)'):'');
+              if(s.errors.length)alert(s.errors.join('\\n'));
+              setTimeout(function(){location.reload();},900);
+            }
+          },function(e){ // poll failed (admin restarted mid-job, proxy error, network blip)
+            clearInterval(t);bulkJob=null;restoreGo();if(dl)dl.disabled=false;prog.textContent='failed: '+e.message;
           });
         },1000);
-      }).catch(function(e){if(go)go.disabled=false;if(dl)dl.disabled=false;prog.textContent='failed: '+e;});
+      }).catch(function(e){bulkJob=null;restoreGo();if(dl)dl.disabled=false;prog.textContent='failed: '+(e.message||e);});
   }
   if(go)go.onclick=function(){
+    if(bulkJob){ // generate running -> this click cancels it
+      fetch('/bulk/cancel/'+bulkJob,{method:'POST'}).then(function(){prog.textContent='cancelling\u2026';}).catch(function(){});
+      return;
+    }
     var face=document.getElementById('bulkFace').value;
-    runBulk('/bulk/generate',{face:face});
+    var extra={face:face};
+    if(globalSel&&globalSel.value)extra.model=globalSel.value;
+    var ex=[].slice.call(document.querySelectorAll('.card.exd')).map(function(c){return c.dataset.id;});if(ex.length)extra.ex=ex.join(',');
+    runBulk('/bulk/generate',extra,true);
   };
   if(dl)dl.onclick=function(){runBulk('/bulk/download',{});};
 })();
@@ -562,10 +690,17 @@ function toggleMark(pane,row,on){
   var pk=row.querySelector('.vpick');if(pk)pk.checked=on;
   vdelCount(pane);
 }
+// One in-flight generate per detail pane: re-clicking the button aborts it.
+// The server aborts the paid OpenRouter call too (keyed on game+face).
+var genCtl=null;
 function submitDetailForm(form){
   var act=form.getAttribute('action')||'';
   var det=form.closest('.detail');var id=det.dataset.id;
   var pane=form.closest('.fpane');var face=pane?pane.dataset.face:null;
+  var isGen=act.indexOf('/generate')>=0;
+  if(isGen&&genCtl){ // a generate is running -> this click is a cancel
+    genCtl.abort();genCtl=null;return;
+  }
   var isGdel=act.indexOf('/gcs-delete')>=0,isDel=!isGdel&&act.indexOf('/delete')>=0;
   if((isDel||isGdel)&&!skipDeleteConfirm()&&!form.dataset.confirmed){
     var row=pane?pane.querySelector('.vrow.sel'):null;
@@ -575,15 +710,35 @@ function submitDetailForm(form){
   }
   if(form.dataset.confirmed)delete form.dataset.confirmed;
   var btn=form.querySelector('button[type=submit],button:not([type])');
-  if(btn){btn.dataset.o=btn.dataset.o||btn.textContent;btn.disabled=true;if(act.indexOf('/generate')>=0)btn.textContent='generating…';}
+  if(btn){btn.dataset.o=btn.dataset.o||btn.textContent;}
+  if(isGen){
+    if(btn){btn.disabled=false;btn.textContent='cancel';}
+    genCtl=new AbortController();
+    fetch(act,{method:'POST',body:new FormData(form),signal:genCtl.signal}).then(function(r){
+      if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});
+      return r.json();
+    }).then(function(d){
+      if(d&&d.promoted===false)alert('generation succeeded, but the auto-promote failed — pick the new version and promote it manually');
+      if(face)return refreshPane(det,id,face);
+    }).catch(function(e){
+      if(e.name!=='AbortError')alert('failed: '+e.message);
+      else if(face)refreshPane(det,id,face);
+    }).finally(function(){
+      genCtl=null;
+      if(btn){btn.disabled=false;if(btn.dataset.o)btn.textContent=btn.dataset.o;}
+    });
+    return;
+  }
+  if(btn){btn.disabled=true;}
   fetch(act,{method:'POST',body:new FormData(form)}).then(function(r){
     if(!r.ok)return r.text().then(function(t){throw new Error(t||('HTTP '+r.status));});
-  }).then(function(){
+  }).then(function(d){
+    if(d&&d.promoted===false)alert('generation succeeded, but the auto-promote failed — pick the new version and promote it manually');
     if(act.indexOf('/promote')>=0&&pane)updateTile(id,face,pane.querySelector('.vrow.sel'));
     if(act.indexOf('/art-note')>=0){flash(btn,'saved ✓');return;}
     if(act.indexOf('/download')>=0)return Promise.all([refreshPane(det,id,'front'),refreshPane(det,id,'spine')]);
     if(face)return refreshPane(det,id,face);
-  }).catch(function(e){alert('falhou: '+e.message);}).finally(function(){
+  }).catch(function(e){alert('failed: '+e.message);}).finally(function(){
     if(btn){btn.disabled=false;if(act.indexOf('/art-note')<0&&btn.dataset.o){btn.textContent=btn.dataset.o;}}
   });
 }
@@ -632,6 +787,7 @@ function selectRow(pane,row){
 
 function initPane(pane){
   if(!pane||pane.dataset.init)return;pane.dataset.init='1';
+  applyGlobalModel(); // fresh pane renders the server default — re-apply the browser's global choice
   // rows -> selection (click) or mark for bulk delete (ctrl/cmd/shift-click)
   pane.querySelectorAll('.vrow').forEach(function(r){r.addEventListener('click',function(e){
     if(e.target.closest('.vpick'))return;

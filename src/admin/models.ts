@@ -4,8 +4,9 @@
  * pane can call — the admin never hardcodes model ids.
  */
 
-/** One OpenRouter model as the studio renders it. */
-export type ImageModel = { id: string; name: string };
+/** One OpenRouter model as the studio renders it. `inputImage` = the model
+ * accepts reference images (examples) on the image endpoint. */
+export type ImageModel = { id: string; name: string; inputImage: boolean };
 
 /** The public models endpoint, pre-filtered by OpenRouter to image-output models. */
 const MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=image";
@@ -13,7 +14,7 @@ const MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=image"
 /** How long a good catalog fetch is reused. */
 const MODELS_TTL_MS = 10 * 60 * 1000;
 
-type RawModel = { id: string; name?: string; architecture?: { output_modalities?: string[] } };
+type RawModel = { id: string; name?: string; architecture?: { input_modalities?: string[]; output_modalities?: string[] } };
 
 let cache: { at: number; models: ImageModel[] } | null = null;
 
@@ -28,7 +29,11 @@ export async function openRouterImageModels(ttlMs = MODELS_TTL_MS): Promise<Imag
     const res = await fetch(MODELS_URL);
     if (!res.ok) throw new Error(`openrouter models ${res.status}`);
     const data = (await res.json()) as { data?: RawModel[] };
-    const models = (data.data ?? []).filter(hasImageOutput).map(({ id, name }) => ({ id, name: name ?? id }));
+    const models = (data.data ?? []).filter(hasImageOutput).map(({ id, name, architecture }) => ({
+      id,
+      name: name ?? id,
+      inputImage: (architecture?.input_modalities ?? []).includes("image"),
+    }));
     cache = { at: Date.now(), models };
     return models;
   } catch {

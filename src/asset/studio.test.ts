@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AssetService } from "./service.ts";
 import { InMemoryBlobStore } from "./store/memory.ts";
 import { buildRenderers } from "./render/registry.ts";
-import { addCandidate, displayKey, history, promote } from "./studio.ts";
+import { addCandidate, displayKey, displayVersions, history, promote } from "./studio.ts";
 import { keyPath } from "./key.ts";
 
 const svc = () => {
@@ -68,6 +68,44 @@ test("promote records a displays.json version marker when given a dataDir", asyn
   await promote(service, k, "spine", dir);
   const map = JSON.parse(await readFile(join(dir, "displays.json"), "utf8"));
   expect(map["clank/spine"]).toBe(2000);
+});
+
+test("displayVersions caches, but notePromotion and external writes are picked up immediately", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "studio-"));
+  const filePath = join(dir, "displays.json");
+  const write = async (map: object) => {
+    await Bun.write(filePath, JSON.stringify(map));
+    // mtime resolution can collide between writes — grow the file so the
+    // stat signature (mtime or size) differs deterministically.
+    await Bun.write(filePath, JSON.stringify(map) + " ");
+  };
+
+  // Prime the cache.
+  await write({ "clank/front": 100 });
+  expect(await displayVersions(dir)).toEqual({ "clank/front": 100 });
+
+  // External process promotion (same volume, different process): mtime/size
+  // change must be seen immediately, long before the TTL would expire.
+  await write({ "clank/front": 100, "root/spine": 200 });
+  expect(await displayVersions(dir)).toEqual({ "clank/front": 100, "root/spine": 200 });
+
+  // Unchanged file within the TTL window: stat signature matches, cache hit.
+  expect(await displayVersions(dir)).toEqual({ "clank/front": 100, "root/spine": 200 });
+});
+
+test("notePromotion refreshes the module cache so the same process reads it immediately", async () => {
+  const { service } = svc();
+  const dir = await mkdtemp(join(tmpdir(), "studio-"));
+  const k = await addCandidate(service, "root", "front", "upload", blob(2), "png");
+
+  setSystemTime(5000);
+  await promote(service, k, "front", dir);
+  // No TTL wait: same-process promotion must be visible at once.
+  expect(await displayVersions(dir)).toEqual({ "root/front": 5000 });
+
+  setSystemTime(6000);
+  await promote(service, k, "front", dir);
+  expect(await displayVersions(dir)).toEqual({ "root/front": 6000 });
 });
 
 test("addCandidate is disk-only; save pushes to GCS; removes are tier-scoped", async () => {

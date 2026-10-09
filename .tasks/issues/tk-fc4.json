@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "_type": "issue",
+  "id": "tk-fc4",
+  "title": "Print OpenRouter request cost per generation",
+  "description": "",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": null,
+  "assignee": null,
+  "created_by": "yuri",
+  "created_at": "2026-09-20T00:56:53.076Z",
+  "updated_at": "2026-09-20T01:16:10.172Z",
+  "started_at": null,
+  "closed_at": null,
+  "due_at": null,
+  "defer_until": null,
+  "parent": null,
+  "sprint": null,
+  "labels": [],
+  "notes": null,
+  "design": null,
+  "acceptance_criteria": null,
+  "estimated_minutes": null,
+  "spec_id": null,
+  "external_ref": null,
+  "branch": null,
+  "metadata": {},
+  "attachments": [],
+  "dependencies": [],
+  "dependency_count": 0,
+  "dependent_count": 0,
+  "comments": [
+    {
+      "id": "comment-89d2a0ae-0991-44d0-aef2-ba30ccf9c52f",
+      "issue_id": "tk-fc4",
+      "author": "yuri",
+      "text": "Fixture: print per-request cost from OpenRouter Image API.\n\nThe /api/v1/images response embeds usage: { prompt_tokens, completion_tokens, total_tokens, cost } (verified against openrouter.ai/docs/guides/overview/multimodal/image-generation — cost is USD, when available). openrouterImageGen currently parses the response and discards usage.\n\n# Target\n- src/asset/gen/box-art.ts: openrouterImageGen factory. log once per call, at the source — no signature changes, no plumbing through callers (covers admin studio AND batch worker).\n- One new small test in src/asset/gen/box-art.test.ts asserting the log fires with model/cost from a mocked fetch (Bun spies on console). Assert behavior, not line numbers.\n\n# Change\nAfter successful parse, before returning bytes:\n  console.log(`[openrouter] model=${model} cost=$${usage.cost} tokens=${usage.total_tokens}`)\n- Skip the line when usage or usage.cost is missing (some providers/routes omit it) — generation must never fail for logging.\n- Keep it exactly one log line; no new deps, no other files.\n\n# Acceptance\n- mocked generation emits the line with real values from the fixture response\n- absent usage -> no log, no throw\n- bun test src/asset/gen/box-art.test.ts green; full bun test no NEW failures (3 pre-existing collection-filter failures are known)\n\n# Constraint\nNo build/lint sweeps. Single commit: \"feat: log OpenRouter per-request cost\". Flag tk ready-to-review. DO NOT merge; Coach handles merge with user after review.\n\nWorktree: .worktrees/openrouter-cost-log (branch openrouter-cost-log, base bd4b904)",
+      "created_at": "2026-09-20T00:57:32.351Z"
+    },
+    {
+      "id": "comment-29dfa916-bdfe-4cb5-8093-8ab2fb4d6966",
+      "issue_id": "tk-fc4",
+      "author": "yuri",
+      "text": "DONE: commit 3588396 — src/asset/gen/box-art.ts openrouterImageGen now logs '[openrouter] model=<model> cost=$<cost> tokens=<total_tokens>' once after successful parse, before returning bytes; skipped silently (no throw) when usage or usage.cost is absent. Added two mocked-fetch tests in src/asset/gen/box-art.test.ts (Bun spyOn on console.log): cost line asserted with exact values from the fixture response (model/cost/tokens), and no-usage case asserting no log and bytes still returned. Verified: bun test src/asset/gen/box-art.test.ts → 13 pass, 0 fail (11 pre-existing + 2 new). No signature changes, no other files, no new deps.",
+      "created_at": "2026-09-20T01:06:23.438Z"
+    },
+    {
+      "id": "comment-11c75f05-b296-4a5a-9714-a77737546d80",
+      "issue_id": "tk-fc4",
+      "author": "yuri",
+      "text": "APPROVED: Verified in .worktrees/openrouter-cost-log at 3588396 (base bd4b904, tree clean).\n- Criterion 1 (log emission): box-art.ts adds 4 lines after the b64 check, before return — one guarded console.log with exact format [openrouter] model=... cost=$... tokens=...; guard usage?.cost != null means absent usage/cost → no log, no throw, bytes still returned. openrouterImageGen(apiKey, model): ImageGen signature unchanged.\n- Criterion 2 (tests): box-art.test.ts appends 2 mocked-fetch tests on the pre-existing withFetch helper with spyOn(console, \"log\") restored in finally: exact line asserted from fixture usage {prompt_tokens 12, completion_tokens 34, total_tokens 46, cost 0.0312} → \"[openrouter] model=google/gemini-2.5-flash-image cost=$0.0312 tokens=46\"; no-usage case asserts bytes (base64 AAAA → Uint8Array [0,0,0]) and not.toHaveBeenCalledWith(stringContaining(\"[openrouter]\")).\n- Criterion 3 (tests green): bun test src/asset/gen/box-art.test.ts in the worktree → 13 pass, 0 fail, 30 expect() calls, 14ms (11 pre-existing + 2 new).\n- Criterion 4 (side effects): git diff bd4b904..3588396 --stat = exactly 2 files (+39/-1); generate.ts and admin/index.ts not in diff; no behavior change beyond the log line.\nBrowser validation: not applicable — server-side stdout log, no UI surface; runtime path verified via the mocked-fetch tests above.",
+      "created_at": "2026-09-20T01:15:14.347Z"
+    }
+  ],
+  "comment_count": 3
+}
