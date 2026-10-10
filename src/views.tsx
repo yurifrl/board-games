@@ -543,6 +543,14 @@ export function collectionPage(opts: {
         <div class="right">
           <button id="view-toggle" class="view-toggle" type="button" aria-pressed="false" aria-label="Toggle shelf and spine views" title="Toggle shelf and spine views">⇄</button>
           <span class="view-toggle-label" aria-hidden="true">switch view</span>
+          <button id="density-toggle" class="view-toggle density-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="density-pop" aria-label="Games per row" title="Games per row"><span id="density-value" aria-hidden="true">Auto</span></button>
+          <div id="density-pop" class="density-pop" hidden>
+            <div class="density-title">Games per row</div>
+            <div class="density-opts">
+              <button type="button" class="density-opt" data-cols="auto">Auto</button>
+              {[2, 3, 4, 5, 6, 8, 10, 12].map((n) => <button type="button" class="density-opt" data-cols={n}>{n}</button>)}
+            </div>
+          </div>
           {perm.admin ? (
             <a class="btn" href="/admin/requests">Requests</a>
           ) : null}
@@ -569,8 +577,8 @@ export function collectionPage(opts: {
       </div>
       <CollectionTools groups={groups} canFilterSale={canSeeSale(perm)} />
       <SlotsSection slots={slots} authed={isAuthed} mine={mineSlots} />
-      <div class="shelf" style={shelfStyle}>{groups.map((grp) => <Box grp={grp} perm={perm} />)}</div>
-      <div class="spines">{groups.map((grp) => <Spine grp={grp} />)}</div>
+      <div class="shelf" style={shelfStyle}><div class="shelf-row">{groups.map((grp) => <Box grp={grp} perm={perm} />)}</div></div>
+      <div class="spines"><div class="spines-row">{groups.map((grp) => <Spine grp={grp} />)}</div></div>
       <div id="filter-empty" class="filter-empty" hidden><b>No games found</b><span>Try clearing a filter or searching for something else.</span></div>
       {active ? <Detail grp={active} perm={perm} whatsapp={whatsapp} open /> : null}
       {perm.admin ? <InviteForm roles={roles} defaultRole={defaultRole} /> : null}
@@ -581,9 +589,17 @@ export function collectionPage(opts: {
       <script
         dangerouslySetInnerHTML={{
           __html: `
-            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;var urlView=${view ? "'" + view + "'" : "null"};function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.title=spine?'View as shelf':'View as spines';}if(!localStorage.getItem('viewToggleSeen'))vt.classList.add('hint');var initial=urlView||localStorage.getItem('gameView')||'shelf';if(urlView)localStorage.setItem('gameView',urlView);apply(initial);vt.addEventListener('click',function(){vt.classList.remove('hint');localStorage.setItem('viewToggleSeen','1');var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);});})();
-            var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf');
-            var spinesEl=document.querySelector('.spines'),spineById={};if(spinesEl)Array.from(spinesEl.querySelectorAll('.spine')).forEach(function(s){spineById[s.dataset.id]=s;});function spineOf(b){return spineById[b.dataset.id];}
+            (function(){var vt=document.querySelector('#view-toggle');if(!vt)return;var urlView=${view ? "'" + view + "'" : "null"};function apply(v){var spine=v==='spine';document.body.classList.toggle('view-spine',spine);vt.setAttribute('aria-pressed',String(spine));vt.title=spine?'View as shelf':'View as spines';if(window.applyCols)window.applyCols();}if(!localStorage.getItem('viewToggleSeen'))vt.classList.add('hint');var initial=urlView||localStorage.getItem('gameView')||'shelf';if(urlView)localStorage.setItem('gameView',urlView);apply(initial);vt.addEventListener('click',function(){vt.classList.remove('hint');localStorage.setItem('viewToggleSeen','1');var v=document.body.classList.contains('view-spine')?'shelf':'spine';localStorage.setItem('gameView',v);apply(v);});})();
+            (function(){var btn=document.querySelector('#density-toggle'),pop=document.querySelector('#density-pop'),val=document.querySelector('#density-value');if(!btn||!pop)return;var opts=Array.from(pop.querySelectorAll('.density-opt'));
+            function apply(){var v=localStorage.getItem('cols-'+(document.body.classList.contains('view-spine')?'spine':'shelf')),n=v?parseInt(v,10):0;if(n<1)n=0;document.querySelectorAll('.shelf,.spines').forEach(function(el){el.classList.toggle('capped',n>0);if(n>0)el.style.setProperty('--cols',n);else el.style.removeProperty('--cols');});val.textContent=n>0?String(n):'Auto';btn.title=n>0?n+' per row · screen-limited':'Games per row · fit to screen';opts.forEach(function(o){var on=o.dataset.cols==='auto'?n===0:n===Number(o.dataset.cols);o.classList.toggle('active',on);o.setAttribute('aria-pressed',String(on));});}
+            window.applyCols=apply;function setOpen(open){pop.hidden=!open;btn.setAttribute('aria-expanded',String(open));}
+            btn.addEventListener('click',function(){setOpen(pop.hidden);});
+            opts.forEach(function(o){o.addEventListener('click',function(){var v=o.dataset.cols;localStorage.setItem('cols-'+(document.body.classList.contains('view-spine')?'spine':'shelf'),v==='auto'?'auto':String(Number(v)));apply();});});
+            document.addEventListener('click',function(e){if(!pop.hidden&&!e.target.closest('#density-pop,#density-toggle'))setOpen(false);});
+            document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!pop.hidden){setOpen(false);btn.focus();}});
+            apply();})();
+            var boxes=Array.from(document.querySelectorAll('.box')),shelf=document.querySelector('.shelf-row');
+            var spinesEl=document.querySelector('.spines-row'),spineById={};if(spinesEl)Array.from(spinesEl.querySelectorAll('.spine')).forEach(function(s){spineById[s.dataset.id]=s;});function spineOf(b){return spineById[b.dataset.id];}
             boxes.forEach(function(b){if(b.classList.contains('sized'))return;var i=b.querySelector('img');if(!i)return;var size=function(){if(i.naturalWidth)b.style.aspectRatio=i.naturalWidth+'/'+i.naturalHeight;};i.complete?size():i.addEventListener('load',size);});
             if(matchMedia('(hover: none), (pointer: coarse)').matches){var expansionObserver=new IntersectionObserver(function(entries){entries.forEach(function(entry){entry.target.classList.toggle('exp-active',entry.isIntersecting);});},{rootMargin:'-35% 0px -35% 0px'});boxes.filter(function(b){return b.classList.contains('has-expansions');}).forEach(function(b){expansionObserver.observe(b);});}
             var controls={search:document.querySelector('#game-search'),type:document.querySelector('#game-type'),category:document.querySelector('#game-category'),providerCategory:document.querySelector('#game-provider-category'),playtime:document.querySelector('#game-playtime'),players:document.querySelector('#game-players'),complexity:document.querySelector('#game-complexity'),rating:document.querySelector('#game-rating'),year:document.querySelector('#game-year'),mechanic:document.querySelector('#game-mechanic'),designer:document.querySelector('#game-designer'),publisher:document.querySelector('#game-publisher'),languageDependency:document.querySelector('#game-language-dependency'),played:document.querySelector('#game-played'),language:document.querySelector('#game-language'),sale:document.querySelector('#game-sale'),parted:document.querySelector('#game-parted')};
