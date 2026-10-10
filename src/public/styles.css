@@ -84,14 +84,27 @@ body::-webkit-scrollbar { display:none; }
   --rowh: 380px;
   --rowgap: 66px;
   --board: 26px;
+  padding: var(--pt) 40px calc(40px + env(safe-area-inset-bottom));
+}
+/* The grid lives on an inner row so the wooden ledge keeps its full-width paint
+   while a chosen density can cap the row width. */
+.shelf-row, body.view-spine .spines-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, var(--colw));
   grid-auto-rows: var(--rowh);
   justify-content: center;
   align-items: end;
   column-gap: var(--colgap);
   row-gap: var(--rowgap);
-  padding: var(--pt) 40px calc(40px + env(safe-area-inset-bottom));
+}
+.shelf-row { grid-template-columns: repeat(auto-fill, var(--colw)); }
+body.view-spine .spines-row { grid-template-columns: repeat(auto-fill, var(--spinew)); }
+/* Density cap: at most --cols tracks, still limited by what the screen fits. */
+.shelf.capped .shelf-row, body.view-spine .spines.capped .spines-row {
+  max-width: calc(var(--cols) * var(--colw) + (var(--cols) - 1) * var(--colgap));
+  margin-inline: auto;
+}
+body.view-spine .spines.capped .spines-row {
+  max-width: calc(var(--cols) * var(--spinew) + (var(--cols) - 1) * var(--colgap));
 }
 /* One wooden ledge at the bottom of every row track (repeats each pitch), shared
    by the box shelf and the spine bookshelf. */
@@ -152,17 +165,37 @@ body.view-spine .view-toggle { background: rgba(150,110,60,.9); }
 }
 @media (prefers-reduced-motion: reduce) { .view-toggle.hint + .view-toggle-label { animation: none; } }
 
+/* Density control: pick games-per-row for the current view; the screen still limits it. */
+.density-toggle {
+  bottom: 68px; width: auto; min-width: 44px;
+  padding: 0 12px; border-radius: 22px;
+  font-size: 13px; font-weight: 600; letter-spacing: .02em;
+}
+.density-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.density-pop {
+  position: fixed; left: 16px; bottom: 120px; z-index: 61;
+  padding: 10px; border-radius: 14px;
+  background: rgba(28,28,34,.92); border: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5); backdrop-filter: blur(6px);
+}
+.density-title { margin: 0 2px 8px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.density-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.density-opt {
+  min-width: 44px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.14);
+  border-radius: 9px; color: #fff; background: rgba(255,255,255,.06);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.density-opt:hover { background: rgba(255,255,255,.12); }
+.density-opt.active { background: var(--accent); border-color: transparent; font-weight: 700; }
+@media (max-width: 560px) { .density-pop { left: 8px; right: 8px; } .density-opts { grid-template-columns: repeat(5, 1fr); } }
+
 /* Spine (bookshelf) view: narrow standing spines on the same wooden ledge. */
 .spines { display: none; }
 body.view-spine .shelf { display: none; }
 body.view-spine .spines {
   --pt: calc(84px + env(safe-area-inset-top));
-  --spinew: 104px; --rowh: 340px; --rowgap: 66px; --board: 26px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, var(--spinew));
-  grid-auto-rows: var(--rowh);
-  justify-content: center; align-items: end;
-  column-gap: 12px; row-gap: var(--rowgap);
+  --spinew: 104px; --rowh: 340px; --rowgap: 66px; --board: 26px; --colgap: 12px;
+  display: block;
   padding: var(--pt) 40px calc(40px + env(safe-area-inset-bottom));
 }
 .collection-tools + .spines { --pt: 32px; }
