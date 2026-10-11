@@ -296,6 +296,18 @@ body.view-spine .spines {
 }
 .box-name::before { left: 7px; }
 .box-name::after { right: 7px; }
+/* Collision mode: when a shelf row is too tight for its name plates, every
+   plate in that row swaps to a small blank brass tag (same for everyone);
+   hovering or focusing the box expands the real name over the neighbors. */
+.box.name-collide .box-name {
+  box-sizing: border-box; min-width: 46px; max-width: 46px;
+  white-space: nowrap; overflow: hidden; color: transparent;
+  transition: max-width .22s ease, color .12s ease;
+}
+.box.name-collide .box-name br { display: none; }
+.box.name-collide:hover .box-name, .box.name-collide:focus-visible .box-name, .box.name-collide.exp-active .box-name {
+  max-width: min(calc(100vw - 32px), 480px); color: #2a2018;
+}
 .expansion-mark {
   position: absolute; top: -10px; right: -10px; z-index: 2;
   width: 20px; height: 20px; display: grid; place-items: center;
@@ -339,7 +351,7 @@ body.view-spine .spines {
 .spine .bye { top: 8px; right: 50%; transform: translateX(50%); }
 
 @media (prefers-reduced-motion: reduce) {
-  .box3d, .expansion-tag { transition: none; }
+  .box3d, .expansion-tag, .box.name-collide .box-name { transition: none; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
