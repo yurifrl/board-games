@@ -143,7 +143,7 @@ describe("collection filters", () => {
         ludopedia: { id: "2", fetchedAt: 2, data: { detail: { nm_jogo: "Ark Nova BR", descricao: "Construa um zoológico." }, videos: { videos: [{ nm_video: "Como jogar", link: "https://www.youtube.com/watch?v=xyz789" }] }, images: { imagens: [{ link: "https://img.test/ludo.jpg" }] }, files: { arquivos: [{ titulo: "Manual", link: "https://files.test/manual.pdf" }] } } },
       },
     };
-    const html = render([enriched]);
+    const html = render([enriched], [], true);
 
     expect(html).toContain('data-t="bgg"');
     expect(html).toContain('data-t="ludopedia"');
@@ -196,7 +196,7 @@ describe("collection filters", () => {
   });
 
   test("keeps explicit provider tabs visible while data is unavailable", () => {
-    const html = render([{ ...game, bggId: "1", ludopediaId: "2" }]);
+    const html = render([{ ...game, bggId: "1", ludopediaId: "2" }], [], true);
 
     expect(html).toContain('data-t="bgg"');
     expect(html).toContain('data-t="ludopedia"');
@@ -284,7 +284,7 @@ describe("collection filters", () => {
     expect(html).toContain("if(e.key!=='Tab')");
     expect(html).toContain('input[type="radio"]:checked');
     expect(html).toContain("if(e.key==='Escape'&&!panel.hidden)");
-    expect(html).toContain("innerHeight-top+'px'");
+    expect(html).toContain("Math.max(0,innerHeight-top)+'px'");
     expect(css).toContain("max-height:none");
     expect(html).toContain('id="clear-panel-filters" type="button">Clear filters</button>');
     expect(html).not.toContain("sort.querySelector('input').checked=true");
