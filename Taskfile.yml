@@ -1,6 +1,11 @@
 version: "3"
 
 tasks:
+  run:
+    desc: "Run"
+    cmds:
+      - bun run --watch src/index.ts
+
   envs:op:
     desc: Resolve .env.op via 1Password CLI into .env
     generates:
